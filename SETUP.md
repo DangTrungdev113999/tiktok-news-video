@@ -102,3 +102,5 @@ luôn chọn **Local** (xem lưu ý ở đầu file).
    ```
 3. Duyệt/sửa kịch bản đã được xào lại cho dễ hiểu khi được hỏi, phần còn lại
    (lồng tiếng, nhạc nền, hiệu ứng, render) tự động.
+
+<!-- update-cycle test marker: 2026-07-17T08:30:57Z -->
