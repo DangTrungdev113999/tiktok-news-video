@@ -25,8 +25,15 @@ jobs:
           "" | node scripts/init.mjs
         continue-on-error: true
 
-      - name: ffmpeg -version (post-init check)
+      - name: ffmpeg -version (post-init check, same-process PATH -- expected to fail)
         run: ffmpeg -version
+        continue-on-error: true
+
+      - name: Refresh PATH from registry (simulates closing/reopening the app) then ffmpeg -version
+        shell: pwsh
+        run: |
+          $env:Path = [System.Environment]::GetEnvironmentVariable("Path","Machine") + ";" + [System.Environment]::GetEnvironmentVariable("Path","User")
+          ffmpeg -version
         continue-on-error: true
 
       - name: Show config.local.json / .env (no secrets expected -- key left blank)
