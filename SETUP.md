@@ -124,10 +124,23 @@ cập nhật (chúng nằm ngoài thư mục cài plugin) — cứ cập nhật 
 (Đã test thật: `/plugin update` không đáng tin cậy để lấy đúng bản mới nhất
 — gỡ cài rồi cài lại mới chắc chắn lấy bản mới nhất.)
 
-**Codex CLI / ChatGPT desktop app:**
+**ChatGPT desktop app (chỉ thao tác chuột, không cần gõ lệnh gì):**
+1. Vào **Plugins**, gỡ plugin "TikTok News Video" ra (nút xoá/"..." trên
+   dòng đó — tên nút có thể là "Remove"/"Uninstall").
+2. Gỡ luôn cả **marketplace** `tiktok-news-video-marketplace` (không chỉ
+   plugin) — mục đích là để app tải lại từ đầu, tránh dùng bản cache cũ.
+3. Bấm **Add** → **Add plugin marketplace**, điền lại đúng Source/Git ref
+   như lúc cài lần đầu (xem bảng ở trên) → **Add marketplace** → **Install**
+   lại plugin.
+
+⚠️ Cách này dựa trên cơ chế đã test qua Codex CLI (`marketplace upgrade` +
+cài lại lấy đúng bản mới nhất) — tôi chưa tự tay bấm được trong UI ChatGPT
+app thật để xác nhận từng bước, vì tôi không điều khiển được app đó trực
+tiếp. Nếu làm theo mà vẫn không thấy thay đổi (ví dụ file/skill mới không
+xuất hiện), báo lại để kiểm tra thêm.
+
+**Codex CLI (dùng terminal):**
 ```
 codex plugin marketplace upgrade tiktok-news-video-marketplace
 codex plugin add tiktok-news-video@tiktok-news-video-marketplace
 ```
-(Trong ChatGPT app, tìm nút tương đương — "Refresh"/"Update" ở marketplace,
-rồi bấm Install lại trên plugin nếu thấy bản mới.)
