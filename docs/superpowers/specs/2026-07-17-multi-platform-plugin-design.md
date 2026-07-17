@@ -7,14 +7,20 @@ desktop app) AND Codex CLI / ChatGPT desktop app, so colleagues can install it
 by pasting a few params into each app's own "Add plugin marketplace" UI, then
 run the init flow which asks for their own ElevenLabs key.
 
-## Platform scope (researched, not assumed)
+## Platform scope (researched via official docs, not assumed)
+
+Sources: code.claude.com/docs/en/desktop.md, /en/plugin-marketplaces,
+/en/plugins-reference (Anthropic, official); learn.chatgpt.com/docs/build-plugins,
+/docs/build-skills (OpenAI, official); support.claude.com articles on org
+plugin management (Anthropic, official).
 
 | Platform | Plugin manifest | Local shell/filesystem access? | In scope? |
 |---|---|---|---|
-| Claude Code (CLI + desktop app) | `.claude-plugin/plugin.json` + `.claude-plugin/marketplace.json` | Yes | Yes — already built, unchanged |
+| Claude Code CLI | `.claude-plugin/plugin.json` + `.claude-plugin/marketplace.json` | Yes, always (terminal process) | Yes — already built, unchanged |
+| Claude Code Desktop (the **Code tab** of the unified Claude Desktop app) | Same manifest as CLI — confirmed official: "Desktop and CLI read the same configuration files... Settings in `~/.claude.json` and `~/.claude/settings.json` are shared", marketplace state lives once per user in `~/.claude/plugins/known_marketplaces.json`. Installed via in-session "+ → Plugins → Add plugin" GUI, not Settings. | **Conditional** — starting a session requires choosing an Environment: **Local**, Remote, SSH, or WSL. Only **Local** has real disk/ffmpeg access; **Remote** runs on Anthropic-managed cloud infrastructure. | Yes, with a documented caveat — same shape as the ChatGPT-app caveat below |
 | Codex CLI | `.codex-plugin/plugin.json` + `.agents/plugins/marketplace.json` | Yes (local terminal agent) | Yes — added this round |
-| ChatGPT desktop app (Plugins tab) | same as Codex — confirmed same manifest format, same "Add plugin marketplace" dialog (Source / Git ref / Sparse paths) | **Conditional** — the app supports both local tasks (full shell+filesystem on the user's machine) and cloud/remote tasks (OpenAI-managed sandbox, no access to local files). Only a **local task** works for this pipeline. | Yes, with a documented caveat |
-| Claude.ai / Claude (consumer chat app, Customize menu / Cowork) | Separate, org-admin-gated marketplace (private/internal GitHub sync or ZIP upload); no local-path self-serve add | No — chat sandbox, no Bash/ffmpeg/filesystem access | **Out of scope** — cannot run this pipeline regardless of manifest format |
+| ChatGPT desktop app (Plugins tab, i.e. Codex embedded in the ChatGPT app) | Same as Codex CLI — confirmed same manifest format, same "Add plugin marketplace" dialog (Source / Git ref / Sparse paths); skill invocation docs are inconsistent about `$name` vs `@name` for this surface specifically, so SETUP.md tells users to try both. | **Conditional** — the app supports both local and cloud/remote tasks; only local has real ffmpeg/filesystem access. | Yes, with a documented caveat |
+| Claude (consumer chat/Cowork tabs) — reached via the SAME Desktop app's **Settings → Customize → Plugins** panel, confirmed via a live screenshot of that exact dialog ("Add from a repository: Sync a plugin marketplace from a GitHub repository or git URL" — no local-path option shown) | Separate, org/consumer-scoped marketplace system (support.claude.com: "install and use plugins in chat on the web, the Chat tab in Claude Desktop, and Claude Cowork") | No — chat/Cowork sandbox, no Bash/ffmpeg/filesystem access | **Out of scope** — installable there, but the init skill would have no shell to run `scripts/init.mjs` at all. Users must be told explicitly not to use this panel for this plugin — it looks identical to the right one but is a different registry entirely. |
 
 ## Architecture: one shared skill tree, two manifest layers
 
@@ -63,15 +69,19 @@ Both platforms' copy-paste params documented in `SETUP.md`:
   `DangTrungdev113999/tiktok-news-video`, Git ref = `main`, Sparse paths =
   blank
 
-`SETUP.md` explicitly warns ChatGPT-app users to start a **local task**, not
-a cloud task, before running the init skill — otherwise the plugin installs
+`SETUP.md` explicitly warns that **both** Claude Code Desktop and the
+ChatGPT desktop app require choosing a **Local** session/environment, not
+Remote/cloud, before running the init skill — otherwise the plugin installs
 and appears fine, then fails opaquely (no ffmpeg, no access to the user's
-asset files) because the session has no local shell.
+asset files) because the session has no local shell. It also explicitly
+tells users which of Claude Desktop's two distinct Plugins UIs to use
+(in-session "+ → Plugins" for the Code tab) and which to avoid (Settings →
+Customize → Plugins, which is the Chat/Cowork-scoped, sandboxed one).
 
-`scripts/init.mjs` now also prints this same warning up front and in the
-ffmpeg-missing failure message, since that's the most likely place someone
-would hit the cloud-sandbox case and be confused about why a supposedly
-working ffmpeg install still fails.
+`scripts/init.mjs` now also prints this same Local-vs-Remote warning up
+front and in the ffmpeg-missing failure message, since that's the most
+likely place someone would hit the cloud-sandbox case and be confused about
+why a supposedly working ffmpeg install still fails.
 
 ## Validation performed (not just schema authored)
 
