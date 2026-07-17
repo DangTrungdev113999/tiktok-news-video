@@ -197,7 +197,7 @@ function stepFfmpeg() {
         { stdio: "inherit" }
       );
       if (install.status === 0) {
-        log("Đã cài xong. Nếu bước kiểm tra bên dưới vẫn báo CHƯA sẵn sàng, hãy MỞ LẠI PowerShell/CMD rồi chạy lại npm run init (PATH cần nạp lại).");
+        log("Đã cài xong ffmpeg. Windows cần NẠP LẠI PATH nên bước kiểm tra ngay bên dưới CHẮC CHẮN sẽ báo CHƯA sẵn sàng — đây là bình thường, không phải lỗi. Hãy ĐÓNG HẲN rồi MỞ LẠI ứng dụng bạn đang dùng (Terminal/PowerShell, hoặc Claude Desktop/ChatGPT app), sau đó chạy lại init một lần nữa để xác nhận ffmpeg đã sẵn sàng.");
       } else {
         log("⚠️  `winget install` gặp lỗi. Xem hướng dẫn cài thủ công bên dưới.");
         printManualFfmpegWindowsInstructions();
@@ -432,7 +432,7 @@ function printFinalChecklist({ ffmpegInfo, remotionResult, config }) {
     ok: !!ffmpegInfo,
     text: ffmpegInfo
       ? `ffmpeg đã cài đặt: ${ffmpegInfo}`
-      : "ffmpeg CHƯA sẵn sàng — xem hướng dẫn cài đặt ở Bước 3 phía trên, rồi chạy lại `npm run init`. Nếu bạn đang ở Claude Code Desktop hoặc ChatGPT app và ffmpeg cứ báo thiếu dù đã cài, khả năng cao phiên đang chạy là Remote/cloud — hãy đổi sang phiên Local.",
+      : "ffmpeg CHƯA sẵn sàng. Nếu Bước 3 ở trên vừa tự cài xong ffmpeg lần đầu, đây là bình thường (Windows cần nạp lại PATH) — đóng hẳn rồi mở lại Terminal/PowerShell hoặc Claude Desktop/ChatGPT app, sau đó chạy lại init. Nếu đã restart mà vẫn báo thiếu, và bạn đang ở Claude Code Desktop hoặc ChatGPT app, kiểm tra xem phiên có đang chạy Remote/cloud thay vì Local không.",
   });
 
   if (!fs.existsSync(REMOTION_PKG)) {
