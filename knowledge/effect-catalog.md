@@ -13,10 +13,25 @@ Read the asset's natural pixel dimensions (`w`, `h`) via `probe-asset.mjs`
 
 | Ratio test | Class | Effect |
 |---|---|---|
-| `w / h >= 1.2` AND is image | landscape | **pan**: horizontal drift (±6% of frame width) + zoom 100%→108% over the scene duration. Direction alternates L↔R by scene index (`index % 2`) so consecutive landscape scenes don't repeat the same drift. |
-| `h / w >= 1.2` AND is image | portrait | **zoom-in**: centered scale 100%→112% over the scene duration. |
-| `0.83 <= w/h < 1.2` AND is image | square-ish | **diagonal**: small diagonal drift (±4% x, ±4% y) + zoom 100%→106%. |
-| any video file | video | **passthrough**: native playback, no synthetic motion added. If the clip's own duration is shorter than the scene's allotted time, loop it; if longer, trim to the scene's duration (never speed up/down). |
+| `w / h >= 1.2` AND is image | landscape | **pan**: horizontal drift (±6% of frame width) + zoom 100%→108% over the scene duration. Direction alternates L↔R by occurrence index *within landscape scenes* so consecutive landscape scenes don't repeat the same drift. |
+| `h / w >= 1.2` AND is image | portrait | **zoom**: centered scale, alternating **push** (100%→112%, `zoomVariant:"in"`) and **pull** (112%→100%, `zoomVariant:"out"`) across consecutive portrait scenes — see "Push/pull alternation" below. |
+| `0.83 <= w/h < 1.2` AND is image | square-ish | Alternates between **diagonal** (small drift ±4% x/y + zoom 100%→106%) and **rotate** (subtle 0°→±3° spin + zoom 100%→115%, see below) across consecutive square-ish scenes, for variety. |
+| any video file | video | **passthrough**: native playback, no synthetic motion added (source audio always muted — see §D/§E). If the clip's own duration is shorter than the scene's allotted time, loop it; if longer, trim to the scene's duration (never speed up/down). |
+
+All ramps use a cinematic ease-out curve (`Easing.bezier(0.22,1,0.36,1)` in
+`Scene.tsx`'s `MOTION_EASING`), not linear interpolation — motion settles
+gently instead of moving at constant mechanical speed.
+
+### Rotate — the geometry that keeps it safe
+
+Rotating a `cover`-filled frame exposes corners unless the zoom compensates.
+For a `w×h` frame rotated by `θ`, the minimum safe scale is
+`cos(θ) + (h/w)·sin(θ)` — for the 1080×1920 frame at 3°, that's ~1.092.
+`ROTATE_ZOOM_END = 1.15` leaves real margin above that. Rotation and zoom
+ramp **monotonically together** (0°→±3° alongside 100%→115%, both starting
+at rest at frame 0), NOT oscillating like pan/diagonal — if they started
+already offset (as pan/diagonal do), the frame would be under-scaled for the
+angle already reached at frame 0, exposing black corners.
 
 ## Frame fit — cover vs. contain+blur-pad
 
@@ -41,19 +56,25 @@ scale it up further (~130%) + Gaussian blur (~40px) to fill the whole
 1080×1920 frame as a backdrop; composite the sharp original centered on top at
 its natural `contain` size. Same technique for images and videos.
 
-## Extra presets (offered, not default — enable per-scene if requested)
+## Push/pull alternation (implemented, default for portrait)
 
-- **Push/pull alternation**: alternate zoom-in vs. zoom-out across
-  consecutive same-class scenes so motion doesn't feel repetitive across a
-  long video.
-- **Breathing hold**: for formal/headshot-style portraits, use a subtler
+Consecutive portrait scenes alternate `zoomVariant: "in"` (push, 100%→112%)
+and `"out"` (pull, 112%→100%) so a run of portraits doesn't feel like the
+same zoom repeating. Tracked per-class in `build-spec.mjs`'s `occurrence`
+counters (landscape/portrait/square each have their own independent
+alternation, not a single global scene counter).
+
+## Extra presets (not implemented — revisit if v1 still feels flat)
+
+- **Breathing hold**: for formal/headshot-style portraits, a subtler
   100%→104% zoom instead of the default 112% — reads as stillness-with-life
-  rather than a dramatic push. Good for official photos, mugshots, portraits
-  in a serious news context.
-- **Parallax layered** (flagged, not implemented in v1): subject cut out via
-  background removal, floated over its own blurred backdrop at a different
-  parallax speed. Needs a background-removal step this plugin doesn't have
-  yet — revisit if v1's effects feel flat.
+  rather than a dramatic push. Would need a way to distinguish "formal
+  headshot" from "candid portrait" automatically (no vision-based detection
+  in this plugin), so left undone rather than applied blindly to all
+  portraits.
+- **Parallax layered**: subject cut out via background removal, floated over
+  its own blurred backdrop at a different parallax speed. Needs a
+  background-removal step this plugin doesn't have yet.
 
 ## Render defaults
 

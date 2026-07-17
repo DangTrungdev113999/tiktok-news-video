@@ -94,8 +94,10 @@ async function main() {
 
   const scenesInput = [
     { text: 'Cảnh mở đầu, ảnh ngang.', assetFilename: fixtures.landscape },
-    { text: 'Cảnh thứ hai, ảnh chân dung.', assetFilename: fixtures.portrait },
-    { text: 'Cảnh thứ ba, ảnh vuông.', assetFilename: fixtures.square },
+    { text: 'Cảnh thứ hai, ảnh chân dung, đẩy vào.', assetFilename: fixtures.portrait },
+    { text: 'Cảnh thứ ba, ảnh vuông, diagonal.', assetFilename: fixtures.square },
+    { text: 'Cảnh thứ tư, ảnh chân dung, kéo ra.', assetFilename: fixtures.portrait },
+    { text: 'Cảnh thứ năm, ảnh vuông, xoay nhẹ.', assetFilename: fixtures.square },
     { text: 'Cảnh cuối, video giữ nguyên.', assetFilename: fixtures.clip },
   ];
 

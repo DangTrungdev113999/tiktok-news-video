@@ -13,9 +13,15 @@
 
 export type AssetType = "image" | "video";
 
-export type Effect = "pan" | "zoom" | "diagonal" | "passthrough";
+export type Effect = "pan" | "zoom" | "diagonal" | "rotate" | "passthrough";
 
 export type Direction = "left" | "right";
+
+/**
+ * Push/pull alternation for "zoom": "in" (100%->112%, the original default)
+ * vs "out" (112%->100%, a pull-back). Ignored for other effects.
+ */
+export type ZoomVariant = "in" | "out";
 
 export type Fit = "cover" | "contain-blur-pad";
 
@@ -24,8 +30,10 @@ export interface SceneSpec {
   assetPath: string;
   assetType: AssetType;
   effect: Effect;
-  /** Required for pan/diagonal (drift direction). Ignored for zoom/passthrough. */
+  /** Required for pan/diagonal/rotate (drift/spin direction). Ignored for zoom/passthrough. */
   direction?: Direction;
+  /** Only meaningful for effect "zoom" -- push/pull alternation. Defaults to "in". */
+  zoomVariant?: ZoomVariant;
   fit: Fit;
   /** Absolute frame (at the composition's fps) this scene's Sequence starts at. */
   startFrame: number;
@@ -44,4 +52,8 @@ export interface VideoSpec {
   /** 0..1, defaults to 0.25 (25%) per the house spec (no ducking). */
   bgmVolume?: number;
   scenes: SceneSpec[];
+  // Index signature: Remotion's <Composition> constrains props to
+  // Record<string, unknown>; every field above is still concretely typed
+  // for consumers, this only satisfies that generic constraint.
+  [key: string]: unknown;
 }

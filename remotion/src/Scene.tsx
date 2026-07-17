@@ -1,8 +1,8 @@
 import React from "react";
 import type { CSSProperties } from "react";
-import { AbsoluteFill, Img, interpolate, staticFile, useCurrentFrame, useVideoConfig } from "remotion";
+import { AbsoluteFill, Easing, Img, interpolate, staticFile, useCurrentFrame, useVideoConfig } from "remotion";
 import { Video as MediaVideo } from "@remotion/media";
-import type { AssetType, Direction, Effect, Fit } from "./spec-types";
+import type { AssetType, Direction, Effect, Fit, ZoomVariant } from "./spec-types";
 
 /**
  * ONE parametric scene component -- no bespoke-per-scene code.
@@ -17,6 +17,7 @@ export interface SceneProps {
   assetType: AssetType;
   effect: Effect;
   direction?: Direction;
+  zoomVariant?: ZoomVariant;
   fit: Fit;
   durationInFrames: number;
 }
@@ -30,8 +31,19 @@ const DIAGONAL_DRIFT_X_PCT = 0.04; // +/-4% of frame width
 const DIAGONAL_DRIFT_Y_PCT = 0.04; // +/-4% of frame height
 const DIAGONAL_ZOOM_END = 1.06;
 
+// Rotating a cover-filled frame exposes corners unless the zoom compensates.
+// For a w x h frame rotated by theta, the minimum safe scale is
+// cos(theta) + (h/w)*sin(theta) (derived for the 1080x1920 frame: ~1.092 at
+// 3deg). 1.15 leaves a real margin over that.
+const ROTATE_DEG = 3; // 0 -> +/-3 degrees (monotonic, not oscillating -- see below)
+const ROTATE_ZOOM_END = 1.15;
+
 const BLUR_PAD_BACKDROP_SCALE = 1.3;
 const BLUR_PAD_BLUR_PX = 40;
+
+// Cinematic ease-out curve (fast start, settles gently) instead of a
+// mechanical linear ramp -- applied to every effect's interpolate() call.
+const MOTION_EASING = Easing.bezier(0.22, 1, 0.36, 1);
 
 // Safety factor applied to the theoretical max crop overflow before letting
 // translate use it (leaves a little margin for rounding/anti-aliasing).
@@ -59,8 +71,10 @@ function clampToAxisOverflow(desiredPx: number, scale: number, dimension: number
 
 /**
  * Computes the CSS transform for a given effect at a given local frame.
- * Pure function of (effect, direction, frame, durationInFrames, width, height) --
- * no randomness, no external state.
+ * Pure function of (effect, direction, zoomVariant, frame, durationInFrames,
+ * width, height) -- no randomness, no external state. Every ramp uses
+ * MOTION_EASING (ease-out) instead of a linear interpolation for a more
+ * cinematic, less mechanical feel.
  *
  * `clampToOverflow` should be true when the media is laid out with
  * `object-fit: cover` (there IS a hard crop edge to respect) and false when
@@ -70,6 +84,7 @@ function clampToAxisOverflow(desiredPx: number, scale: number, dimension: number
 function computeTransform(
   effect: Effect,
   direction: Direction,
+  zoomVariant: ZoomVariant,
   frame: number,
   durationInFrames: number,
   width: number,
@@ -80,10 +95,13 @@ function computeTransform(
   // against durationInFrames <= 1 to avoid a degenerate [0, 0] range.
   const endFrame = Math.max(durationInFrames - 1, 1);
   const sign = direction === "left" ? 1 : -1;
-  const clamp = { extrapolateLeft: "clamp", extrapolateRight: "clamp" } as const;
+  const clamp = { extrapolateLeft: "clamp", extrapolateRight: "clamp", easing: MOTION_EASING } as const;
 
   if (effect === "zoom") {
-    const scale = interpolate(frame, [0, endFrame], [1, ZOOM_END], clamp);
+    // "in" (default): push, 100%->112%. "out": pull, 112%->100% -- push/pull
+    // alternation across consecutive portrait scenes (see build-spec.mjs).
+    const [from, to] = zoomVariant === "out" ? [ZOOM_END, 1] : [1, ZOOM_END];
+    const scale = interpolate(frame, [0, endFrame], [from, to], clamp);
     return `scale(${scale})`;
   }
 
@@ -106,6 +124,19 @@ function computeTransform(
     return `translate(${x}px, ${y}px) scale(${scale})`;
   }
 
+  if (effect === "rotate") {
+    // Monotonic 0 -> +/-ROTATE_DEG together with 1 -> ROTATE_ZOOM_END (NOT
+    // an oscillating +/- like pan/diagonal): the zoom must already be large
+    // enough to cover the frame at whatever angle is reached so far, and
+    // that only holds if both start together at (0deg, scale 1) and grow
+    // in lockstep -- see the ROTATE_ZOOM_END derivation above.
+    const scale = interpolate(frame, [0, endFrame], [1, ROTATE_ZOOM_END], clamp);
+    const deg = interpolate(frame, [0, endFrame], [0, sign * ROTATE_DEG], clamp);
+    // Scale first, then rotate (CSS applies right-to-left) -- matches the
+    // geometry the ROTATE_ZOOM_END safety margin was derived against.
+    return `rotate(${deg}deg) scale(${scale})`;
+  }
+
   // passthrough: native playback, no synthetic motion added.
   return "none";
 }
@@ -122,13 +153,14 @@ const CoverMedia: React.FC<{
   assetType: AssetType;
   effect: Effect;
   direction: Direction;
+  zoomVariant: ZoomVariant;
   durationInFrames: number;
-}> = ({ assetPath, assetType, effect, direction, durationInFrames }) => {
+}> = ({ assetPath, assetType, effect, direction, zoomVariant, durationInFrames }) => {
   const frame = useCurrentFrame();
   const { width, height } = useVideoConfig();
   // true: this media is object-fit: cover, so there is a real crop edge --
   // clamp translate to the overflow actually available.
-  const transform = computeTransform(effect, direction, frame, durationInFrames, width, height, true);
+  const transform = computeTransform(effect, direction, zoomVariant, frame, durationInFrames, width, height, true);
   const src = staticFile(assetPath);
 
   const style: CSSProperties = {
@@ -159,8 +191,9 @@ const ContainBlurPad: React.FC<{
   assetType: AssetType;
   effect: Effect;
   direction: Direction;
+  zoomVariant: ZoomVariant;
   durationInFrames: number;
-}> = ({ assetPath, assetType, effect, direction, durationInFrames }) => {
+}> = ({ assetPath, assetType, effect, direction, zoomVariant, durationInFrames }) => {
   const frame = useCurrentFrame();
   const { width, height } = useVideoConfig();
   // false: the foreground here is object-fit: contain over its own blurred
@@ -169,7 +202,7 @@ const ContainBlurPad: React.FC<{
   const transform =
     effect === "passthrough"
       ? "none"
-      : computeTransform(effect, direction, frame, durationInFrames, width, height, false);
+      : computeTransform(effect, direction, zoomVariant, frame, durationInFrames, width, height, false);
   const src = staticFile(assetPath);
   const isVideo = assetType === "video";
 
@@ -205,8 +238,17 @@ const ContainBlurPad: React.FC<{
   );
 };
 
-export const Scene: React.FC<SceneProps> = ({ assetPath, assetType, effect, direction, fit, durationInFrames }) => {
+export const Scene: React.FC<SceneProps> = ({
+  assetPath,
+  assetType,
+  effect,
+  direction,
+  zoomVariant,
+  fit,
+  durationInFrames,
+}) => {
   const resolvedDirection: Direction = direction ?? "left";
+  const resolvedZoomVariant: ZoomVariant = zoomVariant ?? "in";
 
   if (fit === "contain-blur-pad") {
     return (
@@ -215,6 +257,7 @@ export const Scene: React.FC<SceneProps> = ({ assetPath, assetType, effect, dire
         assetType={assetType}
         effect={effect}
         direction={resolvedDirection}
+        zoomVariant={resolvedZoomVariant}
         durationInFrames={durationInFrames}
       />
     );
@@ -226,6 +269,7 @@ export const Scene: React.FC<SceneProps> = ({ assetPath, assetType, effect, dire
       assetType={assetType}
       effect={effect}
       direction={resolvedDirection}
+      zoomVariant={resolvedZoomVariant}
       durationInFrames={durationInFrames}
     />
   );

@@ -55,20 +55,23 @@ function coverCropFraction(ratioWH, targetRatio) {
 }
 
 /**
- * Decide effect + direction + fit for one scene's asset, per
- * knowledge/effect-catalog.md. Pure function of (probe result, scene index)
- * -- no randomness, no external state, so classification is reproducible.
+ * Decide effect + direction + zoomVariant + fit for one scene's asset, per
+ * knowledge/effect-catalog.md. Pure function of (probe result, per-class
+ * occurrence index) -- no randomness, no external state, so classification
+ * is reproducible. Each class (landscape/portrait/square) alternates its own
+ * variant across consecutive scenes of that SAME class (rhythm, not a
+ * global scene counter), so e.g. two portraits back-to-back get push then
+ * pull, not two pushes in a row.
  *
  * @param {{type:'image'|'video', width:number, height:number, durationSec?:number}} probe
- * @param {number} sceneIndex - used only to alternate pan direction on
- *   consecutive landscape scenes (per the design spec's "direction
- *   alternates L<->R per scene index for rhythm" -- counted across
- *   landscape scenes specifically, tracked by the caller, not globally).
- * @param {number} landscapeOccurrenceIndex - how many landscape scenes have
- *   been seen so far (including this one), used for the alternation.
- * @returns {{effect:'pan'|'zoom'|'diagonal'|'passthrough', direction?:'left'|'right', fit:'cover'|'contain-blur-pad'}}
+ * @param {object} occurrence - how many scenes of each class have been seen
+ *   so far (including this one), tracked by the caller.
+ * @param {number} occurrence.landscape
+ * @param {number} occurrence.portrait
+ * @param {number} occurrence.square
+ * @returns {{effect:'pan'|'zoom'|'diagonal'|'rotate'|'passthrough', direction?:'left'|'right', zoomVariant?:'in'|'out', fit:'cover'|'contain-blur-pad'}}
  */
-export function classifyAsset(probe, landscapeOccurrenceIndex = 0) {
+export function classifyAsset(probe, occurrence = { landscape: 0, portrait: 0, square: 0 }) {
   const { type, width, height } = probe;
   const ratioWH = width / height;
 
@@ -84,7 +87,7 @@ export function classifyAsset(probe, landscapeOccurrenceIndex = 0) {
   }
 
   if (ratioWH >= LANDSCAPE_RATIO) {
-    const direction = landscapeOccurrenceIndex % 2 === 0 ? 'left' : 'right';
+    const direction = occurrence.landscape % 2 === 0 ? 'left' : 'right';
     // Extreme panoramas would lose too much to a center-crop -> blur-pad.
     // A plain 16:9 photo (cropFraction ~0.68) is normal Ken-Burns material
     // and stays on cover; only genuine panoramas (ratioWH > ~2.25) cross
@@ -94,18 +97,24 @@ export function classifyAsset(probe, landscapeOccurrenceIndex = 0) {
   }
 
   if (ratioWH <= 1 / PORTRAIT_RATIO) {
-    return { effect: 'zoom', fit: 'cover' };
+    // Push/pull alternation across consecutive portrait scenes.
+    const zoomVariant = occurrence.portrait % 2 === 0 ? 'in' : 'out';
+    return { effect: 'zoom', zoomVariant, fit: 'cover' };
   }
 
   if (ratioWH >= SQUARE_MIN && ratioWH < LANDSCAPE_RATIO) {
-    return { effect: 'diagonal', direction: 'left', fit: 'cover' };
+    // Alternate between the diagonal drift and a subtle rotate+zoom for
+    // extra variety across consecutive square-ish scenes.
+    const direction = occurrence.square % 4 < 2 ? 'left' : 'right';
+    const effect = occurrence.square % 2 === 0 ? 'diagonal' : 'rotate';
+    return { effect, direction, fit: 'cover' };
   }
 
   // Fallback for anything between the square-ish upper bound and the
   // portrait lower bound that the three ranges above didn't already catch
   // (shouldn't normally happen given the thresholds are contiguous, but
   // never silently fall through with no effect assigned).
-  return { effect: 'zoom', fit: 'cover' };
+  return { effect: 'zoom', zoomVariant: 'in', fit: 'cover' };
 }
 
 /**
@@ -125,7 +134,7 @@ export async function buildSpec({ scenes, repoRoot, narrationAudioPath, bgmAudio
     throw new Error('buildSpec requires a non-empty scenes[] array');
   }
 
-  let landscapeCount = 0;
+  const occurrence = { landscape: 0, portrait: 0, square: 0 };
   const sceneSpecs = [];
   const missingAssets = [];
 
@@ -139,10 +148,18 @@ export async function buildSpec({ scenes, repoRoot, narrationAudioPath, bgmAudio
       continue;
     }
 
-    const isLandscapeImage = probe.type === 'image' && probe.width / probe.height >= LANDSCAPE_RATIO;
-    if (isLandscapeImage) landscapeCount += 1;
+    // Snapshot the 0-based occurrence index for this scene's class BEFORE
+    // bumping the counter, so the first occurrence of each class starts its
+    // alternation at index 0 (left/in/diagonal).
+    const occurrenceForThisScene = { ...occurrence };
+    if (probe.type === 'image') {
+      const ratioWH = probe.width / probe.height;
+      if (ratioWH >= LANDSCAPE_RATIO) occurrence.landscape += 1;
+      else if (ratioWH <= 1 / PORTRAIT_RATIO) occurrence.portrait += 1;
+      else if (ratioWH >= SQUARE_MIN && ratioWH < LANDSCAPE_RATIO) occurrence.square += 1;
+    }
 
-    const { effect, direction, fit } = classifyAsset(probe, landscapeCount - (isLandscapeImage ? 1 : 0));
+    const { effect, direction, zoomVariant, fit } = classifyAsset(probe, occurrenceForThisScene);
 
     const startFrame = Math.round(scene.startSec * FPS);
     const endFrame = Math.round(scene.endSec * FPS);
@@ -153,6 +170,7 @@ export async function buildSpec({ scenes, repoRoot, narrationAudioPath, bgmAudio
       assetType: probe.type,
       effect,
       ...(direction ? { direction } : {}),
+      ...(zoomVariant ? { zoomVariant } : {}),
       fit,
       startFrame,
       durationInFrames,

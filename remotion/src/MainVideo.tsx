@@ -29,6 +29,7 @@ export const MainVideo: React.FC<VideoSpec> = ({
             assetType={scene.assetType}
             effect={scene.effect}
             direction={scene.direction}
+            zoomVariant={scene.zoomVariant}
             fit={scene.fit}
             durationInFrames={scene.durationInFrames}
           />
