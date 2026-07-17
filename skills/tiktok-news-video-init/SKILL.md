@@ -1,5 +1,5 @@
 ---
-name: init
+name: tiktok-news-video-init
 user-invocable: true
 description: "One-time machine setup for the tiktok-news-video plugin: verifies/installs Node+ffmpeg+Remotion deps per OS, then prompts for output folder, ElevenLabs API key, and voice_id. Run this before the first /make-video on a new machine."
 argument-hint: ""

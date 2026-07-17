@@ -5,5 +5,5 @@ argument-hint: ""
 
 # Init: TikTok News Video plugin
 
-Invoke the Skill `tiktok-news-video:init`. That skill runs `scripts/init.mjs`
+Invoke the Skill `tiktok-news-video:tiktok-news-video-init`. That skill runs `scripts/init.mjs`
 and walks the user through anything it reports as failing.

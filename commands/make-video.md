@@ -12,7 +12,7 @@ yourself here.
 ## Step 0: First run on this machine?
 
 If `config.local.json` does not exist at the plugin root, tell the user this is
-the first run and invoke the Skill `tiktok-news-video:init` first. Do not
+the first run and invoke the Skill `tiktok-news-video:tiktok-news-video-init` first. Do not
 proceed to video generation until init reports all checks passing.
 
 ## Step 1: Get the scene script

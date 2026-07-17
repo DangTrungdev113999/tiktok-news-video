@@ -432,7 +432,7 @@ function printFinalChecklist({ ffmpegInfo, remotionResult, config }) {
     ok: !!ffmpegInfo,
     text: ffmpegInfo
       ? `ffmpeg đã cài đặt: ${ffmpegInfo}`
-      : "ffmpeg CHƯA sẵn sàng — xem hướng dẫn cài đặt ở Bước 3 phía trên, rồi chạy lại `npm run init`",
+      : "ffmpeg CHƯA sẵn sàng — xem hướng dẫn cài đặt ở Bước 3 phía trên, rồi chạy lại `npm run init`. Nếu bạn đang ở ChatGPT app/Codex và ffmpeg cứ báo thiếu dù đã cài, khả năng cao phiên đang chạy là cloud/remote task — hãy đổi sang local task.",
   });
 
   if (!fs.existsSync(REMOTION_PKG)) {
@@ -483,6 +483,9 @@ function printFinalChecklist({ ffmpegInfo, remotionResult, config }) {
 
 async function main() {
   log("tiktok-news-video — thiết lập lần đầu cho máy này (npm run init)");
+  log(
+    "Lưu ý nếu bạn đang chạy trong ChatGPT app / Codex: pipeline này cần quyền Bash + ffmpeg + đọc/ghi file THẬT trên máy bạn, nên phiên làm việc phải là LOCAL task (chọn project/thư mục local), không phải cloud/remote task — cloud task sẽ không thấy được ảnh/video của bạn và không có ffmpeg."
+  );
 
   stepDetectOS();
   stepCheckNode();

@@ -1,0 +1,17 @@
+{
+  "name": "tiktok-news-video-marketplace",
+  "interface": {
+    "displayName": "TikTok News Video"
+  },
+  "plugins": [
+    {
+      "name": "tiktok-news-video",
+      "source": {
+        "source": "local",
+        "path": "."
+      },
+      "description": "Generate a TikTok-format (1080x1920) news video from user-supplied images/videos + a scene script typed in chat.",
+      "category": "Productivity"
+    }
+  ]
+}

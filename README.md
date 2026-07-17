@@ -1,7 +1,12 @@
 # TikTok News Video
 
-Plugin cho Claude Code/Desktop: từ ảnh/video + kịch bản gõ thẳng trong chat →
-video tin tức chuẩn TikTok (1080x1920) render tự động qua Remotion.
+Plugin cho **Claude Code** (CLI/desktop) và **Codex CLI / ChatGPT desktop
+app**: từ ảnh/video + kịch bản gõ thẳng trong chat → video tin tức chuẩn
+TikTok (1080x1920) render tự động qua Remotion.
+
+Đồng nghiệp cài plugin qua marketplace của từng app — xem hướng dẫn
+copy-paste chi tiết ở **[SETUP.md](./SETUP.md)**. Phần dưới đây dành cho ai
+đã clone repo và muốn chạy trực tiếp.
 
 ## Dùng thế nào
 
