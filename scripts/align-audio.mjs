@@ -21,7 +21,6 @@ import { spawn } from 'node:child_process';
 import { readFile, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
-import { probeAsset } from './probe-asset.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = path.dirname(HERE);
@@ -95,7 +94,11 @@ async function transcribeWithElevenLabsScribe(audioPath, { apiKey }) {
   // corrupts the upload.
   const blob = new Blob([fileBuffer]);
   const form = new FormData();
-  form.append('model_id', 'scribe_v1');
+  // scribe_v1 is listed as DEPRECATED on ElevenLabs' current models page
+  // (checked 2026-07-17); scribe_v2 is the current model. Vietnamese
+  // word-timing accuracy on scribe_v2 is still unverified (no live key
+  // available in this environment) -- confirm on first real run.
+  form.append('model_id', 'scribe_v2');
   form.append('timestamps_granularity', 'word');
   form.append('file', blob, path.basename(audioPath));
 

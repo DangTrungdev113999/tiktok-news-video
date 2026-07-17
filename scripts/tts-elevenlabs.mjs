@@ -23,14 +23,23 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = path.dirname(HERE);
 
-// NOTE (verified 2026-07-17 via ElevenLabs docs fetch): the
+// NOTE (checked again 2026-07-17 via ElevenLabs docs + web search): the
 // `/with-timestamps` endpoint's documented OpenAPI schema only enumerates
 // `eleven_multilingual_v2` as a model_id example, it does NOT explicitly
-// list `eleven_v3` for this specific endpoint. The design spec + the
-// knowledge doc both call for eleven_v3 (expressive model, audio tag
-// support), so we use it here as instructed — but if a live run 400s on
-// model_id, that's the first thing to check. Kept as a single constant so
-// it's a one-line fix.
+// list `eleven_v3`. Corroborating signal: third-party services (e.g.
+// WaveSpeedAI's "Eleven V3 Timing") sell v3-plus-timestamps as their OWN
+// product layered on top of ElevenLabs — that only makes sense to build if
+// ElevenLabs' own `/with-timestamps` endpoint does NOT natively support v3.
+// This is suggestive, not confirmed either way without a real API call.
+// The design spec + knowledge doc both call for eleven_v3 (expressive
+// model, audio tag support), so we use it here as instructed — but this is
+// THE first thing to verify on the first real key run. If it 400s or the
+// 1:1-alignment assertion below fails, the fallback is: synthesize with
+// eleven_v3 (no timestamps), then run the resulting audio through
+// align-audio.mjs's forced-alignment path (same machinery as the
+// user-provided-MP3 case) to get per-scene timing instead of trusting a
+// timestamped v3 call. Kept as a single constant so swapping model_id is a
+// one-line change if v3 turns out unsupported here.
 const MODEL_ID = 'eleven_v3';
 const VOICE_SETTINGS = { stability: 0.5, similarity_boost: 0.75 };
 
