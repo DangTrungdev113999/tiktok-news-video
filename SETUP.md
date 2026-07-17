@@ -103,4 +103,31 @@ luôn chọn **Local** (xem lưu ý ở đầu file).
 3. Duyệt/sửa kịch bản đã được xào lại cho dễ hiểu khi được hỏi, phần còn lại
    (lồng tiếng, nhạc nền, hiệu ứng, render) tự động.
 
-<!-- update-cycle test marker: 2026-07-17T08:30:57Z -->
+`assets/`, `bgm-library/`, `output/` nằm trong **thư mục workspace** bạn chọn
+lúc `/init` (mặc định: `~/Desktop/tiktok-news-video-workspace`) — không phải
+trong thư mục cài plugin. Thư mục này KHÔNG bị mất/reset khi plugin có bản
+cập nhật mới.
+
+---
+
+## Khi có bản cập nhật mới
+
+Config, API key, ảnh/video, video đã render của bạn luôn an toàn qua các lần
+cập nhật (chúng nằm ngoài thư mục cài plugin) — cứ cập nhật thoải mái theo
+đúng lệnh dưới đây cho từng app:
+
+**Claude Code (CLI hoặc Desktop):**
+```
+/plugin uninstall tiktok-news-video@tiktok-news-video-marketplace
+/plugin install tiktok-news-video@tiktok-news-video-marketplace
+```
+(Đã test thật: `/plugin update` không đáng tin cậy để lấy đúng bản mới nhất
+— gỡ cài rồi cài lại mới chắc chắn lấy bản mới nhất.)
+
+**Codex CLI / ChatGPT desktop app:**
+```
+codex plugin marketplace upgrade tiktok-news-video-marketplace
+codex plugin add tiktok-news-video@tiktok-news-video-marketplace
+```
+(Trong ChatGPT app, tìm nút tương đương — "Refresh"/"Update" ở marketplace,
+rồi bấm Install lại trên plugin nếu thấy bản mới.)

@@ -115,3 +115,86 @@ user wants to try themselves first.
   manifest format. Not attempted.
 - A manifest generator/registry script — YAGNI at one-plugin scale; revisit
   only if this repo grows into a multi-plugin marketplace.
+
+## Addendum (same day): dev workflow, data persistence, and verified update SOP
+
+A follow-up round of work, triggered by the plugin author asking to develop
+against the live Desktop folder while keeping staff installs in sync. Full
+operational detail lives in `MAINTAINER.md` (dev-only) and the "Khi có bản
+cập nhật mới" section of `SETUP.md` (staff-facing); this section records the
+design rationale and what was actually verified, not assumed.
+
+### Critical bug found and fixed: code vs. data separation
+
+An advisor review (before any implementation) flagged that every script
+resolved `config.local.json`/`.env`/`assets/`/`bgm-library/`/`output/`
+relative to `REPO_ROOT` (`path.resolve(__dirname, "..")`). For an installed
+plugin, that directory is a version-pinned cache path
+(`~/.claude/plugins/cache/<marketplace>/<plugin>/<version>/`) that Claude
+Code replaces wholesale on every update. Reproduced live: ran `init.mjs` from
+inside the actual cache directory, watched `config.local.json` land there,
+then confirmed a copy of the code in an unrelated directory couldn't see it.
+Combined with enabling frequent updates (below), this would have silently
+wiped every staff member's ElevenLabs key and workspace config on their
+first update.
+
+Fix (`scripts/workspace.mjs`): `CONFIG_DIR` = `~/.tiktok-news-video`
+(home-directory-based, identical regardless of which plugin version is
+running or which platform invoked it) holds `config.local.json`/`.env`.
+`WORKSPACE_DIR` = a normal, visible folder chosen once during init (default
+`~/Desktop/tiktok-news-video-workspace`), recorded as a field inside that
+config, holds `assets/`, `bgm-library/`, `output/`. Plugin code
+(`scripts/`, `knowledge/`, `remotion/`) keeps resolving relative to wherever
+it's actually installed — that's supposed to change on update, only the data
+needed to stop doing that. Verified the fix directly: copied `scripts/` to
+`/tmp/fake-plugin-cache-v2` (simulating a fresh version directory) and
+confirmed it read the same persisted config instead of starting blank.
+
+### Verified (not assumed): how staff actually receive updates
+
+Removed `.claude-plugin/plugin.json`'s pinned `"version": "0.1.0"` — Claude
+Code's docs state an explicit version means new commits are never detected
+as updates. Omitting it should fall back to git-commit-SHA versioning.
+
+Tested the real update path end to end on the dev machine: pushed a trivial
+commit, then ran `claude plugin marketplace update` +
+`claude plugin update tiktok-news-video@tiktok-news-video-marketplace`.
+Confirmed via `git log` in the local marketplace clone that the commit *was*
+pulled — but `installed_plugins.json`'s `gitCommitSha` did not advance and
+the CLI reported "already at the latest version" twice in a row. An
+uninstall + fresh install, by contrast, picked up the new commit correctly
+every time. Conclusion: `/plugin update` is not reliable for this
+relative-path-in-git-marketplace source shape (at least in the tested
+Claude Code version); the verified, reliable staff SOP is
+uninstall-then-reinstall, which is safe now that user data lives outside the
+plugin's cache entirely.
+
+For Codex, tested `codex plugin marketplace upgrade` followed by re-running
+`codex plugin add` (no uninstall needed) — this correctly refreshed the
+cached plugin content to the new commit. Codex's `plugin.json` requires an
+explicit `version` field (no commit-SHA fallback documented), so
+`.codex-plugin/plugin.json`'s version must still be bumped manually on every
+release intended for Codex/ChatGPT-app users; `MAINTAINER.md` carries this
+as a release-checklist item.
+
+### Local dev loop: skills-directory plugins
+
+Claude Code loads any folder under `~/.claude/skills/` (or a project's
+`.claude/skills/`) containing `.claude-plugin/plugin.json` as a plugin named
+`<name>@skills-dir` — discovered in place, no marketplace, no cache copy.
+Symlinked `~/.claude/skills/tiktok-news-video -> ~/Desktop/tiktok-news-video`
+for this. Confirmed one real constraint: a skills-dir plugin and a
+marketplace-installed plugin sharing the same `name` collide, and merely
+*disabling* the marketplace copy isn't enough — it still "holds" the name.
+The marketplace-installed copy was fully uninstalled on the dev machine so
+the live skills-dir copy could load; `MAINTAINER.md` documents temporarily
+swapping back to a real marketplace install when the author needs to verify
+the exact experience a staff member would get.
+
+### Not verified this round
+
+Driving the actual ChatGPT desktop app UI (install flow, `$`/`@` skill
+invocation, its own "check for updates" button) — everything Codex-side was
+verified through the `codex` CLI, which shares the plugin format but not
+necessarily every UI affordance. Flagged explicitly in `MAINTAINER.md` as
+the plugin author's own follow-up.
