@@ -1,0 +1,36 @@
+name: Windows init smoke test
+
+on:
+  workflow_dispatch: {}
+
+jobs:
+  init-on-real-windows:
+    runs-on: windows-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: node -v / npm -v
+        run: |
+          node -v
+          npm -v
+
+      - name: Run init.mjs non-interactively (all prompts default via empty stdin)
+        shell: pwsh
+        run: |
+          "" | node scripts/init.mjs
+        continue-on-error: true
+
+      - name: ffmpeg -version (post-init check)
+        run: ffmpeg -version
+        continue-on-error: true
+
+      - name: Show config.local.json / .env (no secrets expected -- key left blank)
+        run: |
+          Get-Content config.local.json -ErrorAction SilentlyContinue
+          Get-Content .env -ErrorAction SilentlyContinue
+        continue-on-error: true
