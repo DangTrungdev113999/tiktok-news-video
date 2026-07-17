@@ -1,0 +1,28 @@
+{
+  "name": "tiktok-news-video-remotion",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Remotion project for tiktok-news-video: one parametric <Scene> component renders any spec.json into a 1080x1920 MP4.",
+  "scripts": {
+    "start": "remotion studio src/index.ts",
+    "render": "remotion render src/index.ts MainVideo out/video.mp4",
+    "upgrade": "remotion upgrade"
+  },
+  "dependencies": {
+    "@remotion/cli": "4.0.490",
+    "@remotion/media": "4.0.490",
+    "@remotion/renderer": "4.0.490",
+    "react": "19.2.7",
+    "react-dom": "19.2.7",
+    "remotion": "4.0.490"
+  },
+  "devDependencies": {
+    "@types/react": "19.2.17",
+    "@types/react-dom": "19.2.3",
+    "typescript": "^5.6.0"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}

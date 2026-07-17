@@ -1,0 +1,14 @@
+node_modules/
+.env
+config.local.json
+assets/*
+!assets/.gitkeep
+bgm-library/*
+!bgm-library/.gitkeep
+output/*
+!output/.gitkeep
+remotion/node_modules/
+remotion/.remotion/
+remotion/test-fixtures/
+*.log
+.DS_Store
