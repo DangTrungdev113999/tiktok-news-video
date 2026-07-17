@@ -11,8 +11,20 @@
  *   3. Kiểm tra / cài ffmpeg
  *   4. Cài dependency cho Remotion + tải sẵn Chrome Headless Shell
  *   5. In bảng kiểm tra tổng hợp (pass/fail)
- *   6. Hỏi cấu hình: thư mục output, ElevenLabs API key, voice_id
+ *   6. Hỏi cấu hình: thư mục workspace (assets/bgm-library/output), ElevenLabs
+ *      API key, voice_id
  *   7. Ghi config.local.json và .env
+ *
+ * config.local.json/.env KHÔNG nằm cạnh code (REPO_ROOT) -- khi plugin này
+ * chạy như một plugin đã cài (Claude Code marketplace / Codex / ChatGPT
+ * app), REPO_ROOT là một thư mục cache gắn với PHIÊN BẢN, bị thay mới hoàn
+ * toàn mỗi lần update. Ghi state ở đó nghĩa là mất key + cấu hình mỗi lần
+ * update. Thay vào đó dùng CONFIG_DIR (scripts/workspace.mjs) -- một thư mục
+ * cố định theo home directory, không đổi dù code có update bao nhiêu lần.
+ * Assets/bgm-library/output cũng KHÔNG nằm cạnh code -- chúng nằm trong một
+ * thư mục "workspace" bình thường, hiển thị, do người dùng chọn lúc init
+ * (mặc định: ~/Desktop/tiktok-news-video-workspace), với đường dẫn đó được
+ * ghi lại trong CONFIG_DIR.
  *
  * Toàn bộ script chỉ dùng module có sẵn của Node (fs, path, os, readline,
  * child_process) — không phụ thuộc gói ngoài nào, để chạy được ngay cả khi
@@ -25,14 +37,13 @@ import os from "node:os";
 import readline from "node:readline";
 import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
+import { CONFIG_DIR, CONFIG_PATH, ENV_PATH, DEFAULT_WORKSPACE_DIR, ensureWorkspaceSubdirs } from "./workspace.mjs";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const REPO_ROOT = path.resolve(__dirname, "..");
 const REMOTION_DIR = path.join(REPO_ROOT, "remotion");
 const REMOTION_PKG = path.join(REMOTION_DIR, "package.json");
-const CONFIG_PATH = path.join(REPO_ROOT, "config.local.json");
-const ENV_PATH = path.join(REPO_ROOT, ".env");
 const ENV_EXAMPLE_PATH = path.join(REPO_ROOT, ".env.example");
 
 const DEFAULT_VOICE_ID = "FHhpndubmejSghqiumSv";
@@ -326,7 +337,7 @@ async function stepConfigure(ask) {
   let doConfigure = true;
   if (hasExisting) {
     log("Đã tìm thấy cấu hình trước đó:");
-    if (existingConfig?.outputDir) log(`  - Thư mục output: ${existingConfig.outputDir}`);
+    if (existingConfig?.workspaceDir) log(`  - Thư mục workspace: ${existingConfig.workspaceDir}`);
     if (existingConfig?.voiceId || existingEnv.ELEVENLABS_VOICE_ID) {
       log(`  - Voice ID: ${existingConfig?.voiceId || existingEnv.ELEVENLABS_VOICE_ID}`);
     }
@@ -336,9 +347,11 @@ async function stepConfigure(ask) {
   }
 
   if (!doConfigure) {
+    const workspaceDir = existingConfig?.workspaceDir || null;
+    if (workspaceDir) ensureWorkspaceSubdirs(workspaceDir);
     log("Giữ nguyên cấu hình hiện tại (không ghi đè).");
     return {
-      outputDir: existingConfig?.outputDir || null,
+      workspaceDir,
       voiceId: existingConfig?.voiceId || existingEnv.ELEVENLABS_VOICE_ID || DEFAULT_VOICE_ID,
       apiKey: existingEnv.ELEVENLABS_API_KEY || "",
       bgmLibrary: Array.isArray(existingConfig?.bgmLibrary) ? existingConfig.bgmLibrary : [],
@@ -346,27 +359,22 @@ async function stepConfigure(ask) {
     };
   }
 
-  // --- Thư mục output ---
-  const defaultOutputDir = path.join(REPO_ROOT, "output");
-  const outAnswer = await ask(
-    `\nBạn muốn lưu video đã render ở đâu?\n(Enter để dùng mặc định: ${defaultOutputDir})\n> `
+  // --- Thư mục workspace (chứa assets/, bgm-library/, output/) ---
+  log(
+    "\nThư mục workspace là nơi bạn bỏ ảnh/video vào và nơi video render ra sẽ được lưu."
   );
-  let outputDir = expandHome(outAnswer.trim() || defaultOutputDir);
-  outputDir = path.resolve(outputDir);
+  log(
+    "Đây LUÔN là một thư mục bình thường, cố định trên máy bạn — không đổi dù plugin có update bao nhiêu lần."
+  );
+  const workspaceAnswer = await ask(
+    `Bạn muốn dùng thư mục workspace nào?\n(Enter để dùng mặc định: ${DEFAULT_WORKSPACE_DIR})\n> `
+  );
+  let workspaceDir = expandHome(workspaceAnswer.trim() || DEFAULT_WORKSPACE_DIR);
+  workspaceDir = path.resolve(workspaceDir);
 
-  if (!fs.existsSync(outputDir)) {
-    const createAnswer = await ask(
-      `Thư mục "${outputDir}" chưa tồn tại. Tạo thư mục này luôn không? (Y/n): `
-    );
-    if (createAnswer.trim().toLowerCase().startsWith("n")) {
-      log("Bỏ qua — bạn cần tự tạo thư mục này trước khi render video.");
-    } else {
-      fs.mkdirSync(outputDir, { recursive: true });
-      log(`✅ Đã tạo thư mục: ${outputDir}`);
-    }
-  } else {
-    log(`✅ Thư mục đã tồn tại: ${outputDir}`);
-  }
+  ensureWorkspaceSubdirs(workspaceDir);
+  log(`✅ Thư mục workspace sẵn sàng: ${workspaceDir}`);
+  log(`   (chứa: ${workspaceDir}/assets, /bgm-library, /output)`);
 
   // --- ElevenLabs API key ---
   log("\nElevenLabs API key dùng để tự động tạo giọng đọc (TTS) cho video.");
@@ -381,7 +389,7 @@ async function stepConfigure(ask) {
   const voiceId = voiceAnswer.trim() || DEFAULT_VOICE_ID;
 
   return {
-    outputDir,
+    workspaceDir,
     voiceId,
     apiKey,
     bgmLibrary: Array.isArray(existingConfig?.bgmLibrary) ? existingConfig.bgmLibrary : [],
@@ -389,8 +397,9 @@ async function stepConfigure(ask) {
   };
 }
 
-function writeConfigFiles({ outputDir, voiceId, apiKey, bgmLibrary }) {
-  const configObj = { outputDir, voiceId, bgmLibrary: bgmLibrary || [] };
+function writeConfigFiles({ workspaceDir, voiceId, apiKey, bgmLibrary }) {
+  fs.mkdirSync(CONFIG_DIR, { recursive: true });
+  const configObj = { workspaceDir, voiceId, bgmLibrary: bgmLibrary || [] };
   fs.writeFileSync(CONFIG_PATH, JSON.stringify(configObj, null, 2) + "\n", "utf8");
 
   let envContent;
@@ -461,7 +470,7 @@ function printFinalChecklist({ ffmpegInfo, remotionResult, config }) {
   }
 
   log("");
-  log(`Thư mục output: ${config.outputDir || "(chưa cấu hình)"}`);
+  log(`Thư mục workspace (assets/bgm-library/output): ${config.workspaceDir || "(chưa cấu hình)"}`);
   log(`Voice ID mặc định: ${config.voiceId}`);
   if (config.wrote) {
     log(`\nĐã ghi cấu hình vào:\n  - ${CONFIG_PATH}\n  - ${ENV_PATH}`);

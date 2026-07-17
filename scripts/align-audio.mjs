@@ -20,10 +20,8 @@
 import { spawn } from 'node:child_process';
 import { readFile, writeFile } from 'node:fs/promises';
 import path from 'node:path';
-import { fileURLToPath, pathToFileURL } from 'node:url';
-
-const HERE = path.dirname(fileURLToPath(import.meta.url));
-const REPO_ROOT = path.dirname(HERE);
+import { pathToFileURL } from 'node:url';
+import { CONFIG_DIR } from './workspace.mjs';
 
 const PAD_BEFORE_SEC = 0.06; // same convention as tts-elevenlabs.mjs, for a
 const PAD_AFTER_SEC = 0.10; // consistent converged timing shape (Section D)
@@ -34,8 +32,8 @@ const PAD_AFTER_SEC = 0.10; // consistent converged timing shape (Section D)
 // scripts and the task scope is 4 standalone files, not a shared lib)
 // ---------------------------------------------------------------------------
 
-async function readEnvFile(repoRoot = REPO_ROOT) {
-  const envPath = path.join(repoRoot, '.env');
+async function readEnvFile(configDir = CONFIG_DIR) {
+  const envPath = path.join(configDir, '.env');
   let raw;
   try {
     raw = await readFile(envPath, 'utf8');

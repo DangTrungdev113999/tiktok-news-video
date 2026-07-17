@@ -16,21 +16,20 @@
 import { readdir, copyFile, mkdir, readFile, writeFile, access } from 'node:fs/promises';
 import { constants as fsConstants } from 'node:fs';
 import path from 'node:path';
-import { fileURLToPath, pathToFileURL } from 'node:url';
-
-const HERE = path.dirname(fileURLToPath(import.meta.url));
-const REPO_ROOT = path.dirname(HERE);
-const BGM_DIR = path.join(REPO_ROOT, 'bgm-library');
-const CONFIG_PATH = path.join(REPO_ROOT, 'config.local.json');
+import { pathToFileURL } from 'node:url';
+import { CONFIG_PATH, getWorkspaceDir } from './workspace.mjs';
 
 /**
- * List saved BGM track names (without the .mp3 extension) in bgm-library/.
+ * List saved BGM track names (without the .mp3 extension) in
+ * <workspaceDir>/bgm-library/.
+ * @param {string} [workspaceDir] - defaults to the persisted workspace folder.
  * @returns {Promise<string[]>}
  */
-export async function listBgm() {
+export async function listBgm(workspaceDir = getWorkspaceDir()) {
+  const bgmDir = path.join(workspaceDir, 'bgm-library');
   let entries;
   try {
-    entries = await readdir(BGM_DIR, { withFileTypes: true });
+    entries = await readdir(bgmDir, { withFileTypes: true });
   } catch (err) {
     if (err.code === 'ENOENT') return [];
     throw err;
@@ -52,15 +51,16 @@ function sanitizeName(name) {
 }
 
 /**
- * Copy a user-provided MP3 into bgm-library/<name>.mp3 and register it in
- * config.local.json's bgmLibrary array (if that file already exists — it's
- * owned/created by scripts/init.mjs, so we read-modify-write gracefully if
- * present and skip that part entirely if it's not there yet).
+ * Copy a user-provided MP3 into <workspaceDir>/bgm-library/<name>.mp3 and
+ * register it in config.local.json's bgmLibrary array (if that file already
+ * exists — it's owned/created by scripts/init.mjs, so we read-modify-write
+ * gracefully if present and skip that part entirely if it's not there yet).
  * @param {string} sourcePath
  * @param {string} name
+ * @param {string} [workspaceDir] - defaults to the persisted workspace folder.
  * @returns {Promise<{ name: string, destPath: string }>}
  */
-export async function saveBgm(sourcePath, name) {
+export async function saveBgm(sourcePath, name, workspaceDir = getWorkspaceDir()) {
   const resolvedSource = path.resolve(sourcePath);
   try {
     await access(resolvedSource, fsConstants.R_OK);
@@ -73,8 +73,9 @@ export async function saveBgm(sourcePath, name) {
     throw new Error('BGM name must not be empty');
   }
 
-  await mkdir(BGM_DIR, { recursive: true });
-  const destPath = path.join(BGM_DIR, `${cleanName}.mp3`);
+  const bgmDir = path.join(workspaceDir, 'bgm-library');
+  await mkdir(bgmDir, { recursive: true });
+  const destPath = path.join(bgmDir, `${cleanName}.mp3`);
   await copyFile(resolvedSource, destPath);
 
   await registerInConfig(cleanName);

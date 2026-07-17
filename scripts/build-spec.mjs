@@ -123,13 +123,16 @@ export function classifyAsset(probe, occurrence = { landscape: 0, portrait: 0, s
  *   One entry per scene, in order. `assetFilename` is relative to `assets/`
  *   (e.g. "hop-bao.jpg"). `startSec`/`endSec` come from tts-elevenlabs.mjs's
  *   or align-audio.mjs's `timings[]` (same shape from both).
- * @param {string} args.repoRoot - absolute path to the repo root.
- * @param {string} [args.narrationAudioPath] - path relative to repoRoot.
- * @param {string} [args.bgmAudioPath] - path relative to repoRoot.
+ * @param {string} args.workspaceDir - absolute path to the user's workspace
+ *   folder (holds assets/, bgm-library/, output/ -- NOT the plugin's own
+ *   code directory, which may live in a version-pinned plugin cache that
+ *   gets discarded on update; see scripts/workspace.mjs).
+ * @param {string} [args.narrationAudioPath] - path relative to workspaceDir.
+ * @param {string} [args.bgmAudioPath] - path relative to workspaceDir.
  * @param {number} [args.bgmVolume] - defaults to 0.25 per the house spec.
  * @returns {Promise<import('../remotion/src/spec-types.js').VideoSpec>}
  */
-export async function buildSpec({ scenes, repoRoot, narrationAudioPath, bgmAudioPath, bgmVolume }) {
+export async function buildSpec({ scenes, workspaceDir, narrationAudioPath, bgmAudioPath, bgmVolume }) {
   if (!Array.isArray(scenes) || scenes.length === 0) {
     throw new Error('buildSpec requires a non-empty scenes[] array');
   }
@@ -139,7 +142,7 @@ export async function buildSpec({ scenes, repoRoot, narrationAudioPath, bgmAudio
   const missingAssets = [];
 
   for (const scene of scenes) {
-    const assetAbsPath = path.resolve(repoRoot, 'assets', scene.assetFilename);
+    const assetAbsPath = path.resolve(workspaceDir, 'assets', scene.assetFilename);
     let probe;
     try {
       probe = await probeAsset(assetAbsPath);

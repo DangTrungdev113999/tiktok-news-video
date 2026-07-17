@@ -18,10 +18,8 @@
 import { spawn } from 'node:child_process';
 import { readFile, writeFile } from 'node:fs/promises';
 import path from 'node:path';
-import { fileURLToPath, pathToFileURL } from 'node:url';
-
-const HERE = path.dirname(fileURLToPath(import.meta.url));
-const REPO_ROOT = path.dirname(HERE);
+import { pathToFileURL } from 'node:url';
+import { CONFIG_DIR } from './workspace.mjs';
 
 // NOTE (checked again 2026-07-17 via ElevenLabs docs + web search): the
 // `/with-timestamps` endpoint's documented OpenAPI schema only enumerates
@@ -50,8 +48,8 @@ const PAD_AFTER_SEC = 0.10; // t1 = end + 0.10
 // .env parsing (manual — no `dotenv` dependency, per task constraints)
 // ---------------------------------------------------------------------------
 
-async function readEnvFile(repoRoot = REPO_ROOT) {
-  const envPath = path.join(repoRoot, '.env');
+async function readEnvFile(configDir = CONFIG_DIR) {
+  const envPath = path.join(configDir, '.env');
   let raw;
   try {
     raw = await readFile(envPath, 'utf8');

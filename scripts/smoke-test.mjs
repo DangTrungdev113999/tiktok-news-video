@@ -81,7 +81,9 @@ async function generateBgmFixture() {
   if (!existsSync(tmpBgm)) {
     run('ffmpeg', ['-y', '-f', 'lavfi', '-i', 'sine=frequency=220:duration=20', tmpBgm]);
   }
-  const { destPath } = await saveBgm(tmpBgm, '_smoke-test-bgm');
+  // Explicit workspaceDir=REPO_ROOT: smoke-test is self-contained and must
+  // not depend on (or pollute) the real user-configured workspace.
+  const { destPath } = await saveBgm(tmpBgm, '_smoke-test-bgm', REPO_ROOT);
   return path.relative(REPO_ROOT, destPath);
 }
 
@@ -120,7 +122,7 @@ async function main() {
   await buildSpecToFile(
     {
       scenes: scenesForSpec,
-      repoRoot: REPO_ROOT,
+      workspaceDir: REPO_ROOT,
       narrationAudioPath: path.relative(REPO_ROOT, narrationOutPath),
       bgmAudioPath,
       bgmVolume: 0.25,
@@ -131,7 +133,7 @@ async function main() {
   const outputMp4 = path.join(SMOKE_OUT_DIR, 'smoke-test.mp4');
   console.log('[smoke-test] Rendering via scripts/render.mjs ...');
   await new Promise((resolve, reject) => {
-    const child = spawn('node', ['scripts/render.mjs', specPath, outputMp4], {
+    const child = spawn('node', ['scripts/render.mjs', specPath, outputMp4, REPO_ROOT], {
       cwd: REPO_ROOT,
       stdio: 'inherit',
     });
