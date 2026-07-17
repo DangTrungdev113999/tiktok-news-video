@@ -94,7 +94,13 @@ function buildConcatenatedScript(scenes) {
   let full = '';
   const offsets = []; // [{ start, end }] indices into `full`
   scenes.forEach((scene, i) => {
-    const ttsText = scene.ttsText ?? scene.text ?? '';
+    // Normalize to NFC (composed form) before sending: Vietnamese diacritics
+    // can round-trip through an API as NFC or NFD independent of what was
+    // sent, and the 1:1 alignment assertion below compares raw code units --
+    // sending an already-canonical form removes one whole class of mismatch
+    // (though if ElevenLabs' response itself normalizes differently, the
+    // assertion's error message below points here as a diagnostic).
+    const ttsText = (scene.ttsText ?? scene.text ?? '').normalize('NFC');
     const start = full.length;
     full += ttsText;
     const end = full.length;
@@ -281,11 +287,26 @@ export async function synthesizeScript(scenes, opts = {}) {
   // hold, every timestamp derived below is garbage.
   const joined = characters.join('');
   if (characters.length !== full.length || joined !== full) {
+    // Cheap diagnostic before failing outright: does the mismatch disappear
+    // under NFC normalization? `full` is already sent as NFC (see
+    // buildConcatenatedScript), but the API's response could still come
+    // back differently normalized (e.g. NFD) independent of the input.
+    const joinedNFC = joined.normalize('NFC');
+    const fullNFC = full.normalize('NFC');
+    const normalizationExplainsIt = joinedNFC === fullNFC && joined !== full;
     throw new Error(
       `ElevenLabs alignment.characters (len=${characters.length}) does not map 1:1 onto the ` +
       `concatenated input string (len=${full.length}). Refusing to derive scene timing from ` +
       `misaligned data. This endpoint/model combo is not fully verified (see MODEL_ID comment ` +
-      `above) — likely causes to check, in order: (1) accidentally reading ` +
+      `above) — likely causes to check, in order: ` +
+      (normalizationExplainsIt
+        ? `THIS ONE: the mismatch disappears after both sides are .normalize('NFC') -- the API ` +
+          `returned Vietnamese diacritics in a different Unicode normalization form (NFD vs NFC) ` +
+          `than was sent. Fix: normalize response text to NFC before comparing/using offsets ` +
+          `(input is already NFC-normalized here, so this is purely a response-side quirk). `
+        : `(0) Unicode normalization mismatch was checked and does NOT explain it (NFC-normalizing ` +
+          `both sides still differs) -- rule this out, then check: `) +
+      `(1) accidentally reading ` +
       `\`normalized_alignment\` instead of \`alignment\` (normalized text is post-number-expansion ` +
       `and will never match raw offsets); (2) eleven_v3's \`/with-timestamps\` alignment may strip ` +
       `\`[tag]\` brackets instead of timing them silently as v2/turbo do — inspect \`characters\` ` +
