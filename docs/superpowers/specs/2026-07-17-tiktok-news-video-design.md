@@ -113,9 +113,11 @@ Two distinct paths — they do NOT align the same way:
 
 Both paths converge on the same per-scene timing array before step 6.
 
-**Scope guard:** alignment produces word-level timing, which invites
-karaoke-style captions — **not requested, not building it**. Alignment output
-is used ONLY to size each scene's `Sequence` duration in Remotion.
+**Update (2026-07-18):** karaoke captions were later requested and built.
+Both paths now also return `words[]` per scene (word-level timing) alongside
+`timings[]` — used by `build-spec.mjs` to build `spec.json`'s global
+`captions` array (rendered by `remotion/src/Captions.tsx`) for every scene
+except the hook scene. See §F's "Hook card + captions" addendum below.
 
 ## E. BGM handling (confirmed spec)
 
@@ -157,6 +159,44 @@ Implementation: **one** parametric Remotion `<Scene>` component takes
 `{assetPath, assetType, effect, durationInFrames}` — no per-scene bespoke
 code, no determinism-gate risk, since the motion math is pure and
 deterministic (`interpolate()` on frame number only).
+
+**Update (2026-07-18) — pan traversal fix + hook card + captions:**
+- The original pan implementation clamped translate to a zoom-derived
+  overflow (~3.4% of frame width at the original 1.08 zoom target),
+  regardless of the source image's actual crop overflow — landscape scenes
+  barely moved. Fixed: pan now sizes the media at its true static cover
+  scale (from `assetWidth`/`assetHeight`, now passed through `spec.json`)
+  and traverses the REAL crop overflow. See `knowledge/effect-catalog.md`'s
+  "Pan — real crop traversal" section for the full derivation.
+- Amplitude bumped generally to match common short-form Ken-Burns intensity:
+  portrait zoom 100%→120% (was 112%), square-ish diagonal 100%→108% + ±5%
+  drift (was 106%/±4%).
+- **Hook card**: scene index 0 gets `isHook: true` instead of karaoke
+  captions — a full-frame background image (`brandKit.hookBgPath`,
+  CSS-masked so only roughly the bottom HALF of the frame tints, fading
+  smoothly out of the photo rather than a hard-edged band) + a fully coded
+  ribbon badge (flush-left, rounded right end — replaced compositing the
+  flat `logo.jpg` image, which read as less intentional and is no longer
+  used) + a large, generously-spaced, embossed ALL-CAPS headline, rendered
+  by `remotion/src/HookCard.tsx`. The headline defaults to the scene's OWN
+  final narration text (not a separately-invented stat line — that was
+  tried and corrected 2026-07-18). Headline font is Baloo2
+  (`@remotion/google-fonts/Baloo2`, switched from an earlier Anton attempt
+  for better readability/roundness at this size). No reveal/fade-in
+  animation — badge and headline are fully static and visible from frame 0
+  (an earlier version had a fade-in reveal; removed per explicit feedback
+  2026-07-18: "không cần hiệu ứng đâu, luôn luôn xuất hiện nhé"). See the
+  2026-07-18 multi-brand-kit spec for how `brandKit` itself is now resolved
+  (per-brand folders with their own badge text + color palette, replacing
+  the single machine-wide `brandKit` config field this section originally
+  described).
+- **Captions**: every non-hook scene gets word-synced karaoke captions,
+  rendered by one global `remotion/src/Captions.tsx` component (outside any
+  per-scene `<Sequence>`, driven by absolute-frame word timing from
+  `build-spec.mjs`'s chunking) — see §D's update above for where the word
+  data comes from. Style is cumulative read-highlight (a word turns gold the
+  moment it starts and stays gold; unread words stay white), NOT a per-word
+  pop/zoom — tried and corrected 2026-07-18 per user feedback.
 
 Resolution/format defaults (not asked, presenting as defaults to confirm):
 1080×1920 @ 30fps, H.264 MP4, target LUFS -14 for final master (reusing the
@@ -243,8 +283,10 @@ disproportionate for a lightweight plugin).
 
 ## J. Explicit scope cuts (confirmed or default-assumed)
 
-- No karaoke/word-synced captions (alignment data used only for scene
-  timing, not subtitles).
+- ~~No karaoke/word-synced captions~~ — **reversed 2026-07-18**: karaoke
+  captions are now in scope for every scene except the hook scene (see §F's
+  update). Still in scope as a cut: no per-scene caption style variation —
+  one look, everywhere.
 - No visual Artifact/blur-reveal UI for script review — text-only in chat.
 - No ducking on BGM — constant 25%.
 - No parallax/subject-cutout effects in v1.
