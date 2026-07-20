@@ -13,7 +13,36 @@
 
 export type AssetType = "image" | "video";
 
-export type Effect = "pan" | "zoom" | "diagonal" | "rotate" | "passthrough";
+export type Effect = "pan" | "zoom" | "diagonal" | "rotate" | "passthrough" | "slide";
+
+/**
+ * A `slide_left_right` / `slide_right_left` traverse across the picture,
+ * resolved from the tag's insets and anchor at build time. See
+ * skills/tiktok-news-video/references/tags/slide-left-right.md.
+ */
+export interface SlideSpec {
+  /**
+   * Normalised position along the image where the frame starts, 0 = its left
+   * edge, 1 = its right edge. `from > to` IS the right-to-left variant -- there
+   * is deliberately no direction field, because two ways of saying which way
+   * the move goes is one way too many.
+   */
+  from: number;
+  /** Where the frame ends, same normalisation. */
+  to: number;
+  /**
+   * Vertical point to bring toward the centre of frame, normalised against the
+   * picture (`top 20%` -> 0.1, the centre of that band). Omitted = stay on the
+   * vertical centre, and then no zoom is applied at all.
+   */
+  anchorY?: number;
+  /**
+   * Zoom held during an anchored slide. An anchor is unreachable without one:
+   * a cover-fitted wide photo is exactly frame-height, so there is no vertical
+   * slack to shift into until the picture is enlarged.
+   */
+  anchorScale?: number;
+}
 
 export type Direction = "left" | "right";
 
@@ -63,6 +92,14 @@ export interface SceneSpec {
   direction?: Direction;
   /** Only meaningful for effect "zoom" -- push/pull alternation. Defaults to "in". */
   zoomVariant?: ZoomVariant;
+  /**
+   * The ZOOMED end of a "zoom" effect, from a `zoom_in: 50%` / `zoom_out: 50%`
+   * tag -- 1.5 for 50%. Means the same thing in both variants; `zoomVariant`
+   * says which end of the shot it belongs to. Defaults to the house 1.2.
+   */
+  zoomTo?: number;
+  /** Required for effect "slide". */
+  slide?: SlideSpec;
   fit: Fit;
   /**
    * Asset's natural pixel dimensions (from probe-asset.mjs's ffprobe read).

@@ -100,13 +100,38 @@ assets.
 | Key | Value | Reference |
 |---|---|---|
 | `focus_object` | free-form Vietnamese description of what to focus on | `focus-object.md` |
+| `fill_full_screen` | none — bare flag | `fill-full-screen.md` |
+| `zoom_in` | optional `50%` — how far past natural framing. Default 20% | `zoom-in.md` |
+| `zoom_out` | optional `50%` — same, pulling back | `zoom-out.md` |
+| `slide_left_right` | optional `20% 20%, top 20%` — start/end insets, vertical anchor | `slide-left-right.md` |
+| `slide_right_left` | optional — same grammar, mirrored | `slide-right-left.md` |
 
 When you meet a key in this table, **open its reference file before acting**.
 The table is the whole contract — a key not listed here is not implemented.
 
-**Agreed but not yet written:** `fill_full_screen` (bare flag, forces
-edge-to-edge crop once blur-pad becomes the default fit). Treat it as unknown
-until it has a row above.
+### Three kinds of key
+
+The parser distinguishes them, and so should you when teaching the syntax:
+
+| Kind | Written | Example |
+|---|---|---|
+| Value required | `key: value` | `focus_object` |
+| Bare flag | `key` alone; a value is ignored with a warning | `fill_full_screen` |
+| Value optional | either; bare means "use the default" | `zoom_in`, `slide_left_right` |
+
+### Only one tag may own the motion
+
+`focus_object`, `zoom_in`, `zoom_out`, `slide_left_right` and
+`slide_right_left` all decide what the camera does, so **at most one of them
+applies to a given asset**. When an author writes two, the more specific
+request wins and the other is reported, never silently dropped:
+
+```
+focus_object  >  slide_left_right / slide_right_left  >  zoom_in / zoom_out
+```
+
+`fill_full_screen` is not in that contest — it chooses the framing, not the
+movement, and composes with any of them.
 
 ## Adding a key
 

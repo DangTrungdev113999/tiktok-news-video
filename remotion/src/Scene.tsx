@@ -2,7 +2,7 @@ import React from "react";
 import type { CSSProperties } from "react";
 import { AbsoluteFill, Easing, Img, interpolate, staticFile, useCurrentFrame, useVideoConfig } from "remotion";
 import { Video as MediaVideo } from "@remotion/media";
-import type { AssetType, Direction, Effect, Fit, FocusPoint, ZoomVariant } from "./spec-types";
+import type { AssetType, Direction, Effect, Fit, FocusPoint, SlideSpec, ZoomVariant } from "./spec-types";
 
 /**
  * ONE parametric scene component -- no bespoke-per-scene code.
@@ -24,6 +24,10 @@ export interface SceneProps {
   assetHeight?: number;
   /** From a `focus_object:` tag -- one entry per subject, in time order. Replaces the effect with an aimed move. */
   focus?: FocusPoint[];
+  /** The ZOOMED end of a "zoom" effect, from `zoom_in: 50%` / `zoom_out: 50%`. Defaults to ZOOM_END. */
+  zoomTo?: number;
+  /** Required for effect "slide" -- see SlideMedia. */
+  slide?: SlideSpec;
   durationInFrames: number;
 }
 
@@ -42,6 +46,21 @@ const PAN_TRAVERSAL_FRACTION = 0.92;
 const PAN_EXTRA_ZOOM_END = 1.06;
 
 const ZOOM_END = 1.2;
+// Enlarging a 1080-wide source past this shows its own pixels on a phone.
+const ZOOM_MAX = 2.0;
+
+// A slide reads as a steady traverse, so neither MOTION_EASING (a hard
+// ease-out: ~93% done by halfway, so the move appears to arrive at once and
+// then crawl) nor a linear ramp (starts and stops dead, mechanical). This
+// symmetric ease-in-out holds an even pace through the middle, which is where
+// the eye is actually reading the picture.
+const SLIDE_EASING = Easing.bezier(0.33, 0, 0.67, 1);
+// Fraction of the shot the anchor push takes before it holds.
+const SLIDE_ANCHOR_RAMP = 0.25;
+// Travelling the FULL overflow puts the image edge exactly on the frame edge;
+// exact in real arithmetic, a subpixel gamble after rounding. This backs off
+// by an invisible amount so no edge can ever creep in.
+const SLIDE_TRAVERSAL_SAFETY = 0.98;
 
 const DIAGONAL_DRIFT_X_PCT = 0.05; // +/-5% of frame width
 const DIAGONAL_DRIFT_Y_PCT = 0.05; // +/-5% of frame height
@@ -242,6 +261,7 @@ function computeTransform(
   width: number,
   height: number,
   clampToOverflow: boolean,
+  zoomTo: number = ZOOM_END,
 ): string {
   // Last frame index used as the end of the interpolation range. Guard
   // against durationInFrames <= 1 to avoid a degenerate [0, 0] range.
@@ -252,7 +272,11 @@ function computeTransform(
   if (effect === "zoom") {
     // "in" (default): push, 100%->112%. "out": pull, 112%->100% -- push/pull
     // alternation across consecutive portrait scenes (see build-spec.mjs).
-    const [from, to] = zoomVariant === "out" ? [ZOOM_END, 1] : [1, ZOOM_END];
+    // `zoomTo` is the ZOOMED end in both variants; zoomVariant only says
+    // which end of the shot it belongs to. That is what makes `zoom_in: 50%`
+    // and `zoom_out: 50%` a symmetrical pair rather than a coincidence.
+    const end = Math.min(Math.max(zoomTo, 1), ZOOM_MAX);
+    const [from, to] = zoomVariant === "out" ? [end, 1] : [1, end];
     const scale = interpolate(frame, [0, endFrame], [from, to], clamp);
     return `scale(${scale})`;
   }
@@ -362,6 +386,98 @@ const PanMedia: React.FC<{
   return <Img src={src} style={style} />;
 };
 
+/**
+ * A `slide_left_right` / `slide_right_left` traverse.
+ *
+ * WHY THIS IS NOT A `computeTransform` BRANCH (every other effect is):
+ * `computeTransform`'s output lands on a frame-sized element with
+ * `object-fit: cover`. That element CLIPS the cropped-off sides -- the extra
+ * image content is not in the box, so translating the box does not reveal it,
+ * it drags the AbsoluteFill behind into view as a black band down one edge.
+ * That happened, was measured, and was fixed once already; the clamp that now
+ * prevents it bounds travel to `(scale - 1) * dimension / 2`, which at any
+ * tasteful zoom is a few percent of frame width -- nowhere near a traverse.
+ *
+ * So, exactly as `PanMedia` does, this sizes the <Img> at its TRUE cover-scaled
+ * dimensions, putting the whole picture physically in the layout, and
+ * translates across that. `pan` and `slide` are the two documented exceptions
+ * to the one-parametric-transform rule, both for this same reason.
+ *
+ * Sizing at cover scale is also what satisfies the tag's blur rule: the
+ * picture fills the frame on the axis of travel for the whole move, so no
+ * blurred band is ever slid past.
+ *
+ * Pure function of the local frame -- no randomness, no external state.
+ */
+const SlideMedia: React.FC<{
+  assetPath: string;
+  assetType: AssetType;
+  slide: SlideSpec;
+  assetWidth: number;
+  assetHeight: number;
+  durationInFrames: number;
+}> = ({ assetPath, assetType, slide, assetWidth, assetHeight, durationInFrames }) => {
+  const frame = useCurrentFrame();
+  const { width, height } = useVideoConfig();
+  const endFrame = Math.max(durationInFrames - 1, 1);
+
+  const coverScale = Math.max(width / assetWidth, height / assetHeight);
+  const scaledW = assetWidth * coverScale;
+  const scaledH = assetHeight * coverScale;
+
+  // An anchor is unreachable without a zoom: a cover-fitted wide photo is
+  // exactly frame-height, so `scaledH * 1 - height` is 0 and there is no
+  // vertical slack to shift into. The push opens the shot and then holds,
+  // leaving the rest of the run to the travel itself.
+  const hasAnchor = typeof slide.anchorY === "number";
+  const scale = hasAnchor
+    ? interpolate(
+        frame,
+        [0, Math.max(endFrame * SLIDE_ANCHOR_RAMP, 1)],
+        [1, Math.max(slide.anchorScale ?? 1.3, 1)],
+        { extrapolateLeft: "clamp", extrapolateRight: "clamp", easing: MOTION_EASING },
+      )
+    : 1;
+
+  // Position of the frame along the picture: 0 = its left edge is at the
+  // frame's left edge, 1 = its right edge at the frame's right edge.
+  const p = interpolate(frame, [0, endFrame], [slide.from, slide.to], {
+    extrapolateLeft: "clamp",
+    extrapolateRight: "clamp",
+    easing: SLIDE_EASING,
+  });
+
+  const overflow = (painted: number, frameExtent: number) =>
+    (Math.max(painted * scale - frameExtent, 0) / 2) * SLIDE_TRAVERSAL_SAFETY;
+
+  // p = 0 must show the LEFT of the picture, which means translating the
+  // element to the RIGHT -- hence (1 - 2p), which runs +max -> -max.
+  const x = overflow(scaledW, width) * (1 - 2 * p);
+
+  const maxY = overflow(scaledH, height);
+  const desiredY = hasAnchor ? -scale * (slide.anchorY! - 0.5) * scaledH : 0;
+  const y = Math.max(Math.min(desiredY, maxY), -maxY);
+
+  const style: CSSProperties = {
+    position: "absolute",
+    top: "50%",
+    left: "50%",
+    width: scaledW,
+    height: scaledH,
+    marginLeft: -scaledW / 2,
+    marginTop: -scaledH / 2,
+    transform: `translate(${x}px, ${y}px) scale(${scale})`,
+    transformOrigin: "center center",
+    objectFit: "cover",
+  };
+
+  const src = staticFile(assetPath);
+  if (assetType === "video") {
+    return <MediaVideo src={src} style={style} objectFit="cover" loop muted />;
+  }
+  return <Img src={src} style={style} />;
+};
+
 const CoverMedia: React.FC<{
   assetPath: string;
   assetType: AssetType;
@@ -371,8 +487,9 @@ const CoverMedia: React.FC<{
   assetWidth?: number;
   assetHeight?: number;
   focus?: FocusPoint[];
+  zoomTo?: number;
   durationInFrames: number;
-}> = ({ assetPath, assetType, effect, direction, zoomVariant, assetWidth, assetHeight, focus, durationInFrames }) => {
+}> = ({ assetPath, assetType, effect, direction, zoomVariant, assetWidth, assetHeight, focus, zoomTo, durationInFrames }) => {
   const frame = useCurrentFrame();
   const { width, height } = useVideoConfig();
 
@@ -404,7 +521,7 @@ const CoverMedia: React.FC<{
 
   const transform = hasFocus
     ? computeFocusTransform(focus!, frame, durationInFrames, paintedW, paintedH, width, height)
-    : computeTransform(effect, direction, zoomVariant, frame, durationInFrames, width, height, true);
+    : computeTransform(effect, direction, zoomVariant, frame, durationInFrames, width, height, true, zoomTo);
   const src = staticFile(assetPath);
 
   const style: CSSProperties = {
@@ -437,10 +554,11 @@ const ContainBlurPad: React.FC<{
   direction: Direction;
   zoomVariant: ZoomVariant;
   focus?: FocusPoint[];
+  zoomTo?: number;
   assetWidth?: number;
   assetHeight?: number;
   durationInFrames: number;
-}> = ({ assetPath, assetType, effect, direction, zoomVariant, focus, assetWidth, assetHeight, durationInFrames }) => {
+}> = ({ assetPath, assetType, effect, direction, zoomVariant, focus, zoomTo, assetWidth, assetHeight, durationInFrames }) => {
   const frame = useCurrentFrame();
   const { width, height } = useVideoConfig();
   // false: the foreground here is object-fit: contain over its own blurred
@@ -458,7 +576,7 @@ const ContainBlurPad: React.FC<{
     ? computeFocusTransform(focus, frame, durationInFrames, paintedW, paintedH, width, height)
     : effect === "passthrough"
       ? "none"
-      : computeTransform(effect, direction, zoomVariant, frame, durationInFrames, width, height, false);
+      : computeTransform(effect, direction, zoomVariant, frame, durationInFrames, width, height, false, zoomTo);
   const src = staticFile(assetPath);
   const isVideo = assetType === "video";
 
@@ -504,10 +622,31 @@ export const Scene: React.FC<SceneProps> = ({
   assetWidth,
   assetHeight,
   focus,
+  zoomTo,
+  slide,
   durationInFrames,
 }) => {
   const resolvedDirection: Direction = direction ?? "left";
   const resolvedZoomVariant: ZoomVariant = zoomVariant ?? "in";
+  const hasFocus = focus !== undefined && focus.length > 0;
+
+  // A slide ignores `fit` on purpose: it sizes the picture to cover the frame
+  // on its axis of travel, which is what keeps a blurred band from being slid
+  // past. Falls through to the normal paths without dimensions (an older
+  // spec.json, or a video we couldn't probe), which degrade rather than break.
+  // `focus` still outranks it, matching the precedence in tags/README.md.
+  if (effect === "slide" && slide && assetWidth && assetHeight && !hasFocus) {
+    return (
+      <SlideMedia
+        assetPath={assetPath}
+        assetType={assetType}
+        slide={slide}
+        assetWidth={assetWidth}
+        assetHeight={assetHeight}
+        durationInFrames={durationInFrames}
+      />
+    );
+  }
 
   if (fit === "contain-blur-pad") {
     return (
@@ -518,6 +657,7 @@ export const Scene: React.FC<SceneProps> = ({
         direction={resolvedDirection}
         zoomVariant={resolvedZoomVariant}
         focus={focus}
+        zoomTo={zoomTo}
         assetWidth={assetWidth}
         assetHeight={assetHeight}
         durationInFrames={durationInFrames}
@@ -535,6 +675,7 @@ export const Scene: React.FC<SceneProps> = ({
       assetWidth={assetWidth}
       assetHeight={assetHeight}
       focus={focus}
+      zoomTo={zoomTo}
       durationInFrames={durationInFrames}
     />
   );

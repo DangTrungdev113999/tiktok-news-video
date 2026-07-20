@@ -38,7 +38,34 @@
 export const KNOWN_KEYS = new Set(['focus_object']);
 
 /** Bare flags -- tags written as the key alone, with no value. */
-export const KNOWN_FLAGS = new Set([]);
+export const KNOWN_FLAGS = new Set(['fill_full_screen']);
+
+/**
+ * Keys that are valid BOTH bare and with a value -- bare means "use the
+ * default". They land in `tags` like any other key, with `''` as the value when
+ * written bare, so a consumer tests presence with `'zoom_in' in tags` rather
+ * than truthiness.
+ */
+export const KNOWN_OPTIONAL_KEYS = new Set([
+  'zoom_in',
+  'zoom_out',
+  'slide_left_right',
+  'slide_right_left',
+]);
+
+/**
+ * The keys that decide what the camera does. At most one may apply to an
+ * asset; when an author writes several, the FIRST entry here wins and the rest
+ * are reported. Ordered most-specific first -- an aimed move at a named
+ * subject beats a survey of the whole picture, which beats a bare zoom.
+ */
+export const MOTION_KEYS = [
+  'focus_object',
+  'slide_left_right',
+  'slide_right_left',
+  'zoom_in',
+  'zoom_out',
+];
 
 const SHARE_RE = /\((\d+(?:\.\d+)?)\s*%\)/;
 
@@ -46,7 +73,12 @@ const SHARE_RE = /\((\d+(?:\.\d+)?)\s*%\)/;
 const UNKNOWN_KEY_RE = /^([A-Za-z][\w-]*)\s*:/;
 
 function keyPattern() {
-  const keys = [...KNOWN_KEYS, ...KNOWN_FLAGS];
+  // Longest first: `zoom_in` is a prefix of nothing here, but a future key
+  // that IS a prefix of another would otherwise match the shorter one and
+  // leave the remainder stranded in the previous value.
+  const keys = [...KNOWN_KEYS, ...KNOWN_FLAGS, ...KNOWN_OPTIONAL_KEYS].sort(
+    (a, b) => b.length - a.length
+  );
   if (keys.length === 0) return null;
   // A key must start at a token boundary and may be followed by ':' or not.
   return new RegExp(`(?:^|[\\s|])(${keys.join('|')})\\s*:?\\s*`, 'g');
@@ -117,7 +149,7 @@ export function parseAssetLine(line) {
       flags.push(hit.key);
       return;
     }
-    if (!value) {
+    if (!value && !KNOWN_OPTIONAL_KEYS.has(hit.key)) {
       warnings.push(`"${hit.key}" on ${filename} has no value -- ignored`);
       return;
     }
@@ -128,7 +160,94 @@ export function parseAssetLine(line) {
     tags[hit.key] = value;
   });
 
-  return { filename, ...(share !== undefined ? { share } : {}), tags, flags, unknownKeys, warnings };
+  // Only one tag may own the camera. Reported rather than resolved here: this
+  // module says what the author wrote, and dropping a tag silently is exactly
+  // the failure mode the unknown-key rule exists to prevent.
+  const motionsPresent = MOTION_KEYS.filter((k) => k in tags);
+  if (motionsPresent.length > 1) {
+    warnings.push(
+      `${filename} carries ${motionsPresent.length} motion tags (${motionsPresent.join(', ')}) -- ` +
+      `only "${motionsPresent[0]}" applies, the rest are ignored`
+    );
+  }
+
+  return {
+    filename,
+    ...(share !== undefined ? { share } : {}),
+    tags,
+    flags,
+    ...(motionsPresent.length > 0 ? { motionKey: motionsPresent[0] } : {}),
+    unknownKeys,
+    warnings,
+  };
+}
+
+/**
+ * `50%`, `50 %`, `50` -> 0.5. Returns null for anything else (including an
+ * empty value, which is how an optional-value key says "use the default").
+ */
+export function parsePercent(value) {
+  const m = String(value ?? '').match(/(\d+(?:[.,]\d+)?)\s*%?/);
+  if (!m) return null;
+  const n = Number(m[1].replace(',', '.'));
+  return Number.isFinite(n) ? n / 100 : null;
+}
+
+const ANCHOR_RE = /\b(top|bottom|tren|tr[eê]n|d[uư][oơ]i|duoi)\b\s*(\d+(?:[.,]\d+)?)\s*%?/i;
+
+/**
+ * The `slide_*` value: `20% 20%, top 20%`. Every part optional.
+ *
+ * Returns insets as fractions (NOT resolved into from/to positions -- which
+ * edge each one counts from depends on which of the two slide tags it came
+ * from, and that is the caller's business), plus the anchor as the CENTRE of
+ * the named band, normalised against the picture.
+ *
+ *   top 20%    -> band [0, 0.2]    -> anchorY 0.1
+ *   bottom 20% -> band [0.8, 1]    -> anchorY 0.9
+ *
+ * The anchor clause is pulled out FIRST, so its own percentage can never be
+ * mistaken for one of the two insets no matter which order they were written
+ * in. Anything left over that isn't a number is reported, not guessed at.
+ */
+export function parseSlideValue(value) {
+  const warnings = [];
+  let text = String(value ?? '').trim();
+  if (!text) return { warnings };
+
+  let anchorY;
+  const anchorMatch = text.match(ANCHOR_RE);
+  if (anchorMatch) {
+    const fraction = Number(anchorMatch[2].replace(',', '.')) / 100;
+    const fromTop = /^(top|tr[eê]n|tren)$/i.test(anchorMatch[1]);
+    if (fraction > 0 && fraction <= 1) {
+      anchorY = fromTop ? fraction / 2 : 1 - fraction / 2;
+    } else {
+      warnings.push(`slide anchor "${anchorMatch[0].trim()}" is not between 0% and 100% -- ignored`);
+    }
+    text = text.replace(ANCHOR_RE, ' ');
+  }
+
+  const numbers = [...text.matchAll(/(\d+(?:[.,]\d+)?)\s*%?/g)].map((m) =>
+    Number(m[1].replace(',', '.')) / 100
+  );
+  const leftovers = text
+    .replace(/[\d.,%\s|]+/g, ' ')
+    .trim();
+  if (leftovers) {
+    warnings.push(`didn't understand "${leftovers}" in the slide value -- ignored`);
+  }
+
+  if (numbers.length > 2) {
+    warnings.push(`slide takes at most two insets, got ${numbers.length} -- using the first two`);
+  }
+
+  return {
+    ...(numbers.length > 0 ? { startInset: numbers[0] } : {}),
+    ...(numbers.length > 1 ? { endInset: numbers[1] } : {}),
+    ...(anchorY !== undefined ? { anchorY } : {}),
+    warnings,
+  };
 }
 
 /**

@@ -53,3 +53,25 @@ All motion is pure math over the local frame number in
 write bespoke per-scene motion code. If a new movement is needed, it becomes a
 new named effect in the catalog + a branch in `computeTransform`, not a
 one-off component.
+
+### The two exceptions, and the geometry that forces them
+
+`pan` and `slide` are **not** `computeTransform` branches. Both are still
+parametric and still pure functions of the local frame — they are exceptions to
+*where the transform is applied*, not to the rule above.
+
+`computeTransform`'s output lands on a **frame-sized** element with
+`object-fit: cover`. That element *clips* the cropped-off sides: the extra image
+content is not in the box, so translating the box doesn't reveal it, it drags
+the `AbsoluteFill` behind into view as a black band down one edge. The clamp
+that prevents that (`clampToAxisOverflow`) bounds travel to
+`(scale − 1) × dimension / 2` — a few percent of frame width at any tasteful
+zoom, nowhere near a traverse.
+
+So any effect that has to travel across the *real* crop overflow must size the
+media element at its true cover-scaled dimensions instead, putting the whole
+picture physically in the layout. That is `PanMedia` and `SlideMedia`.
+
+The test for whether a future effect needs the same treatment: **does it move
+the frame far enough to leave what a frame-sized element holds?** Pure scale
+(`zoom`) and small drifts (`diagonal`, `rotate`) do not. A traverse does.

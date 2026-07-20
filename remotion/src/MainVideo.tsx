@@ -40,6 +40,8 @@ export const MainVideo: React.FC<VideoSpec> = ({
             assetWidth={scene.assetWidth}
             assetHeight={scene.assetHeight}
             focus={scene.focus}
+            zoomTo={scene.zoomTo}
+            slide={scene.slide}
             durationInFrames={scene.durationInFrames}
           />
           {scene.isHook && brandKit ? (

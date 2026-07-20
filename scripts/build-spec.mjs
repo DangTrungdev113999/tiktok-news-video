@@ -345,6 +345,128 @@ function resolveFocusPeaks(focus, startFrame, durationInFrames, filename, warnin
   return resolved;
 }
 
+// --- Motion tags: zoom_in / zoom_out / slide_left_right / slide_right_left ---
+//
+// The parser turns tag TEXT into numbers; this turns those numbers into the
+// render-ready spec fields. Keeping the geometry here (rather than in the
+// skill) means the two slide tags stay exact mirrors by construction instead
+// of by two prompts agreeing with each other.
+
+/** Bare `zoom_in` / `zoom_out` -- the house drift. */
+const ZOOM_DEFAULT_AMOUNT = 0.2;
+/** Past this a 1080-wide source is enlarged beyond its own pixels. */
+const ZOOM_MAX_SCALE = 2.0;
+/** A slide with less travel than this is a still frame that looks like a bug. */
+const SLIDE_MIN_TRAVEL = 0.15;
+// Zoom held during an anchored slide. An anchor is unreachable without one,
+// and a FIXED zoom under-serves a strong ask: bringing a point at y=0.1 to the
+// centre of a cover-fitted wide photo needs about scale 5 before the picture is
+// tall enough to allow the shift, so at 1.3 the frame only travels ~29% of the
+// way and the author's `top 20%` barely registers. Scaling the zoom with how
+// far the anchor sits from centre spends more zoom exactly where more is
+// needed. The ceiling matches focus_object's "tight" value -- past it the
+// source pixels start to show.
+const SLIDE_ANCHOR_SCALE_BASE = 1.15;
+const SLIDE_ANCHOR_SCALE_PER_UNIT = 1.5;
+const SLIDE_ANCHOR_SCALE_MAX = 1.6;
+
+function slideAnchorScale(anchorY) {
+  const distanceFromCentre = Math.abs(anchorY - 0.5);
+  return Math.min(
+    SLIDE_ANCHOR_SCALE_BASE + SLIDE_ANCHOR_SCALE_PER_UNIT * distanceFromCentre,
+    SLIDE_ANCHOR_SCALE_MAX,
+  );
+}
+/** Below this many pixels of horizontal overflow there is nothing to slide across. */
+const SLIDE_MIN_OVERFLOW_PX = 40;
+
+/**
+ * `zoom_in: 50%` / `zoom_out: 50%` -> the `zoom` effect with an explicit end.
+ * `zoomTo` is the ZOOMED end in both variants; `zoomVariant` says which end of
+ * the shot it belongs to, which is what makes the pair symmetrical.
+ */
+function resolveZoomTag(zoom, filename, warnings) {
+  const amount = typeof zoom.amount === 'number' ? zoom.amount : ZOOM_DEFAULT_AMOUNT;
+  let zoomTo = 1 + amount;
+  if (zoomTo > ZOOM_MAX_SCALE) {
+    warnings.push(
+      `${filename}: zoom of ${Math.round(amount * 100)}% enlarges the picture past its own ` +
+      `pixels and would look soft -- capped at ${Math.round((ZOOM_MAX_SCALE - 1) * 100)}%.`
+    );
+    zoomTo = ZOOM_MAX_SCALE;
+  }
+  return { effect: 'zoom', zoomVariant: zoom.variant === 'out' ? 'out' : 'in', zoomTo };
+}
+
+/**
+ * `slide_left_right: 20% 20%, top 20%` -> the `slide` effect.
+ *
+ * The insets are always measured from the edge that END of the move is near,
+ * so the same value produces the same framing in either direction. Resolving
+ * them into absolute `from`/`to` positions here is what lets `spec.json` carry
+ * no direction field at all -- `from > to` IS the right-to-left variant.
+ *
+ * Also forces `fit: 'cover'`: a slide must not travel past a blurred band, and
+ * cover is what fills the axis of travel. See tags/slide-left-right.md.
+ */
+function resolveSlideTag(slide, probe, filename, warnings) {
+  const leftToRight = slide.direction !== 'right_left';
+  const startInset = slide.startInset ?? 0;
+  const endInset = slide.endInset ?? 0;
+
+  let from = leftToRight ? startInset : 1 - startInset;
+  let to = leftToRight ? 1 - endInset : endInset;
+
+  if (Math.abs(to - from) < SLIDE_MIN_TRAVEL) {
+    warnings.push(
+      `${filename}: the slide insets leave only ${Math.round(Math.abs(to - from) * 100)}% to ` +
+      `travel across, which would barely move -- sliding the full width instead.`
+    );
+    from = leftToRight ? 0 : 1;
+    to = leftToRight ? 1 : 0;
+  }
+
+  const anchorY = typeof slide.anchorY === 'number' ? slide.anchorY : undefined;
+  const anchorScale = anchorY !== undefined ? slideAnchorScale(anchorY) : undefined;
+
+  // A slide needs horizontal crop overflow to travel across. Cover-fitting a
+  // PORTRAIT image into 1080x1920 binds on width, so there is none -- the tag
+  // silently produces a still frame unless an anchor's zoom creates some.
+  const coverScale = Math.max(WIDTH / probe.width, HEIGHT / probe.height);
+  const overflowPx = probe.width * coverScale * (anchorScale ?? 1) - WIDTH;
+  if (overflowPx < SLIDE_MIN_OVERFLOW_PX) {
+    warnings.push(
+      `${filename} is ${probe.width}x${probe.height} -- once it fills a 1080x1920 frame there is ` +
+      `nothing either side to slide across, so the shot will barely move. Slides want a wide ` +
+      `picture; use zoom_in/zoom_out or focus_object on this one.`
+    );
+  }
+
+  return {
+    effect: 'slide',
+    fit: 'cover',
+    slide: { from, to, ...(anchorY !== undefined ? { anchorY, anchorScale } : {}) },
+  };
+}
+
+/**
+ * Everything an asset's tags override on top of `classifyAsset`'s automatic
+ * choice. Returns the fields to spread over it.
+ *
+ * Precedence matches tags/README.md: focus_object > slide > zoom. The parser
+ * already reports the conflict; this just has to agree with it. `focus` is
+ * applied elsewhere (it needs the shot's frame window), so here it only means
+ * "leave the automatic effect alone, the focus path will take over".
+ */
+function resolveAssetMotion(asset, probe, warnings) {
+  const overrides = {};
+  if (asset.fillFullScreen) overrides.fit = 'cover';
+  if (asset.focus) return overrides;
+  if (asset.slide) Object.assign(overrides, resolveSlideTag(asset.slide, probe, asset.filename, warnings));
+  else if (asset.zoom) Object.assign(overrides, resolveZoomTag(asset.zoom, asset.filename, warnings));
+  return overrides;
+}
+
 /** Shortest shot worth cutting to. Below this the cut reads as a glitch. */
 const MIN_SHOT_SEC = 0.5;
 
@@ -443,6 +565,11 @@ function expandScreensIntoShots(screens, warnings = []) {
         ...rest,
         assetFilename: asset.filename,
         ...(asset.focus ? { focus: asset.focus } : {}),
+        // Motion tags ride along per-asset; they are resolved against the
+        // probe (a slide needs the picture's real dimensions) further down.
+        ...(asset.fillFullScreen ? { fillFullScreen: true } : {}),
+        ...(asset.zoom ? { zoom: asset.zoom } : {}),
+        ...(asset.slide ? { slide: asset.slide } : {}),
         startSec: boundaries[i],
         endSec: boundaries[i + 1],
         ...(i === 0 && words ? { words } : {}),
@@ -487,14 +614,31 @@ export async function buildSpec({ scenes, workspaceDir, narrationAudioPath, bgmA
     // aspect ratio, so letting it bump the counter would flip the next
     // portrait's push/pull for no visible reason.
     const occurrenceForThisScene = { ...occurrence };
-    if (probe.type === 'image' && !scene.focus) {
+    const hasMotionTag = Boolean(scene.focus || scene.slide || scene.zoom);
+    if (probe.type === 'image' && !hasMotionTag) {
       const ratioWH = probe.width / probe.height;
       if (ratioWH >= LANDSCAPE_RATIO) occurrence.landscape += 1;
       else if (ratioWH <= 1 / PORTRAIT_RATIO) occurrence.portrait += 1;
       else if (ratioWH >= SQUARE_MIN && ratioWH < LANDSCAPE_RATIO) occurrence.square += 1;
     }
 
-    const { effect, direction, zoomVariant, fit } = classifyAsset(probe, occurrenceForThisScene);
+    // Automatic classification first, then whatever the author's tags override.
+    // A tag changes which parameters Scene.tsx receives -- it never adds a
+    // bespoke rendering path (see tags/README.md).
+    const { effect, direction, zoomVariant, fit, zoomTo, slide } = {
+      ...classifyAsset(probe, occurrenceForThisScene),
+      ...resolveAssetMotion(
+        {
+          filename: scene.assetFilename,
+          focus: scene.focus,
+          fillFullScreen: scene.fillFullScreen,
+          zoom: scene.zoom,
+          slide: scene.slide,
+        },
+        probe,
+        warnings,
+      ),
+    };
 
     const startFrame = Math.round(scene.startSec * FPS);
     const endFrame = Math.round(scene.endSec * FPS);
@@ -506,6 +650,8 @@ export async function buildSpec({ scenes, workspaceDir, narrationAudioPath, bgmA
       effect,
       ...(direction ? { direction } : {}),
       ...(zoomVariant ? { zoomVariant } : {}),
+      ...(zoomTo !== undefined ? { zoomTo } : {}),
+      ...(slide ? { slide } : {}),
       fit,
       assetWidth: probe.width,
       assetHeight: probe.height,

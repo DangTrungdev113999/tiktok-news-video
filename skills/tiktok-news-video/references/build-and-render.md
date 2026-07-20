@@ -10,9 +10,30 @@ the author wrote and resolves nothing. Turning that into numbers happens
 |---|---|---|
 | a cut pinned to a spoken moment | word-level timing | Step 2 |
 | `focus_object` → coordinates | a look at the image | any time, but the reads belong with the rest of the build |
+| `lúc "..."` → `peakSec` | word-level timing | Step 2 |
+| slide insets → `from`/`to`, degenerate-slide check | the asset's real dimensions | the probe, here |
 
 So: parse at Step 1, resolve at Step 4, and never try to work out a cut point
 at parse time — there is nothing to time against yet.
+
+### What you pass, per motion tag
+
+`buildSpec` does the geometry — keeping it there is what makes the two slide
+tags exact mirrors by construction rather than by two prompts agreeing. Pass
+the author's intent, in the shape the tag was written in, on the asset:
+
+| Tag | Pass on the asset |
+|---|---|
+| `fill_full_screen` | `fillFullScreen: true` |
+| `zoom_in: 50%` | `zoom: { variant: 'in', amount: 0.5 }` |
+| `zoom_out` (bare) | `zoom: { variant: 'out' }` |
+| `slide_left_right: 20% 20%, top 20%` | `slide: { direction: 'left_right', startInset: 0.2, endInset: 0.2, anchorY: 0.1 }` |
+| `slide_right_left` (bare) | `slide: { direction: 'right_left' }` |
+| `focus_object: ...` | `focus: [{ x, y, scale, peakSec?, note? }]` |
+
+`parsePercent()` and `parseSlideValue()` in `scripts/parse-tags.mjs` produce
+`amount`, `startInset`, `endInset` and `anchorY` for you — don't re-derive them
+by reading the tag text yourself.
 
 ## Building `spec.json`
 
