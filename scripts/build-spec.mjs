@@ -117,10 +117,18 @@ export function classifyAsset(probe, occurrence = { landscape: 0, portrait: 0, s
   return { effect: 'zoom', zoomVariant: 'in', fit: 'cover' };
 }
 
-// Karaoke caption line-chunking: keep lines short enough to read at a glance
-// and to fit 1080px width at the caption font size (see Captions.tsx).
-const CAPTION_MAX_WORDS_PER_LINE = 5;
-const CAPTION_MAX_CHARS_PER_LINE = 28;
+// Karaoke caption chunking: how many words are shown together as ONE group.
+//
+// A group is allowed to wrap onto TWO rendered lines (Captions.tsx lays its
+// words out with flex-wrap), so these bounds describe a whole group, not a
+// single rendered row. Sizing (2026-07-20, see
+// docs/superpowers/specs/2026-07-20-safe-zone-typography-design.md): the
+// caption box is 1080 - 60 - 194 = 826px wide at Oswald 700 / 54px, which
+// fits roughly 34 uppercase characters per rendered row -- so ~68 characters
+// over two rows. 52 leaves real slack for wide words and the 18px word gap
+// rather than betting on the estimate.
+const CAPTION_MAX_WORDS_PER_LINE = 9;
+const CAPTION_MAX_CHARS_PER_LINE = 52;
 
 /**
  * Group a scene's word-level timing into short on-screen caption lines

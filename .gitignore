@@ -12,3 +12,4 @@ remotion/.remotion/
 remotion/test-fixtures/
 *.log
 .DS_Store
+.superpowers/

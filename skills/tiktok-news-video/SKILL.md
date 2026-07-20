@@ -224,6 +224,15 @@ one-line summary of what effects/BGM/voice/brand were used.
 
 ## Explicit scope guard
 
+All on-screen text geometry (font, sizes, badge/headline/caption positions,
+TikTok safe-zone bounds) lives in `remotion/src/layout.ts` and was MEASURED
+off reference frames — see
+`docs/superpowers/specs/2026-07-20-safe-zone-typography-design.md`. Do not
+re-tune those numbers inside `HookCard.tsx`/`Captions.tsx` by eye; change
+`layout.ts` and re-verify by rendering a still and measuring the pixels (that
+doc's §F shows the method). Text must stay inside y247–1629 and, below y862,
+inside x51–886 — outside that band TikTok's own UI covers it on a real phone.
+
 Karaoke captions (Step 6) are in scope for every scene EXCEPT the hook scene
 — don't add per-word styling variety or a second caption style, the single
 `Captions.tsx` look is the whole spec. Do not build a visual

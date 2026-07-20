@@ -180,9 +180,11 @@ deterministic (`interpolate()` on frame number only).
   used) + a large, generously-spaced, embossed ALL-CAPS headline, rendered
   by `remotion/src/HookCard.tsx`. The headline defaults to the scene's OWN
   final narration text (not a separately-invented stat line — that was
-  tried and corrected 2026-07-18). Headline font is Baloo2
-  (`@remotion/google-fonts/Baloo2`, switched from an earlier Anton attempt
-  for better readability/roundness at this size). No reveal/fade-in
+  tried and corrected 2026-07-18). Headline font was Baloo2 here;
+  **superseded 2026-07-20** — the whole badge/headline geometry and the
+  typeface now come from measured constants in `remotion/src/layout.ts`
+  (Oswald 700, shared with the captions). See
+  `2026-07-20-safe-zone-typography-design.md`. No reveal/fade-in
   animation — badge and headline are fully static and visible from frame 0
   (an earlier version had a fade-in reveal; removed per explicit feedback
   2026-07-18: "không cần hiệu ứng đâu, luôn luôn xuất hiện nhé"). See the
@@ -196,7 +198,11 @@ deterministic (`interpolate()` on frame number only).
   `build-spec.mjs`'s chunking) — see §D's update above for where the word
   data comes from. Style is cumulative read-highlight (a word turns gold the
   moment it starts and stays gold; unread words stay white), NOT a per-word
-  pop/zoom — tried and corrected 2026-07-18 per user feedback.
+  pop/zoom — tried and corrected 2026-07-18 per user feedback. **Updated
+  2026-07-20**: type is now Oswald 700 at 54px (shared with the hook
+  headline via `remotion/src/layout.ts`, replacing a standalone Inter), a
+  group may wrap onto two lines, and the block moved up out of TikTok's
+  covered band — see `2026-07-20-safe-zone-typography-design.md`.
 
 Resolution/format defaults (not asked, presenting as defaults to confirm):
 1080×1920 @ 30fps, H.264 MP4, target LUFS -14 for final master (reusing the

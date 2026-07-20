@@ -1,8 +1,8 @@
 import React from "react";
 import type { CSSProperties } from "react";
 import { AbsoluteFill, Img, staticFile } from "remotion";
-import { loadFont } from "@remotion/google-fonts/Baloo2";
 import type { BrandKit } from "./spec-types";
+import { BADGE, BRAND_FONT_FAMILY, HEADLINE, fitHeadlineFontSize } from "./layout";
 
 /**
  * Overlay rendered ONLY on top of the hook/cover scene (spec.scenes[i].isHook)
@@ -17,24 +17,24 @@ import type { BrandKit } from "./spec-types";
  * cropping needed -- its aspect already matches 1080x1920) with a CSS mask
  * gradient fading its own top edge to transparent. That mask, layered on top
  * of the asset's own baked-in cream->orange gradient, is what makes the card
- * bloom out of the photo instead of meeting it at a hard rectangle edge. The
- * mask is tuned so the tinted region covers roughly the bottom HALF of the
- * frame, not more (2026-07-18: was too tall, pushed the whole transition
- * down).
+ * bloom out of the photo instead of meeting it at a hard rectangle edge.
  *
  * The brand badge is coded here rather than compositing a flat logo image --
  * a flush-left ribbon (flat left edge, rounded right end) reads more
  * intentional than a floating pill. Badge text and every color below come
  * from the resolved BrandKit (one brand folder's brand.json, see
- * scripts/brand-kit.mjs) so each channel can look genuinely different, not
- * just show a different background photo.
+ * scripts/brand-kit.mjs) so each channel can look genuinely different.
+ *
+ * 2026-07-20: every position and size here now comes from `./layout` (see
+ * that file for the measurements behind them) instead of being tuned by eye
+ * in this component. Two things changed visibly: the type is Oswald 700
+ * (shared with the captions, replacing Baloo2) and the whole badge+headline
+ * stack moved up out of TikTok's covered bottom band.
  */
 export interface HookCardProps {
   headline: string;
   brandKit: BrandKit;
 }
-
-const { fontFamily: headlineFont } = loadFont("normal", { weights: ["800"], subsets: ["vietnamese", "latin"] });
 
 // Tinted region ~ bottom half of the frame: fully transparent through 44%,
 // ramps to fully opaque by 60%, solid from there to the bottom.
@@ -45,51 +45,67 @@ const bgMaskStyle: CSSProperties = {
     "linear-gradient(to bottom, transparent 0%, transparent 44%, rgba(0,0,0,0.4) 52%, black 60%, black 100%)",
 };
 
-const badgeIconStyle: CSSProperties = {
-  width: 38,
-  height: 38,
-  borderRadius: "50%",
-  border: "3px solid rgba(255,255,255,0.92)",
-  display: "flex",
-  alignItems: "center",
-  justifyContent: "center",
-  flexShrink: 0,
-};
-
 export const HookCard: React.FC<HookCardProps> = ({ headline, brandKit }) => {
+  // Long headlines step down a size rather than growing another line into
+  // the badge above them -- see fitHeadlineFontSize.
+  const headlineFontSize = fitHeadlineFontSize(headline);
+
   const badgeStyle: CSSProperties = {
     position: "absolute",
-    top: 1132,
+    top: BADGE.top,
     left: 0,
+    height: BADGE.height,
     display: "flex",
     alignItems: "center",
-    gap: 14,
-    padding: "16px 34px 16px 24px",
+    gap: BADGE.gap,
+    paddingLeft: BADGE.paddingLeft,
+    paddingRight: BADGE.paddingRight,
     background: `linear-gradient(135deg, ${brandKit.badgeGradient[0]} 0%, ${brandKit.badgeGradient[1]} 55%, ${brandKit.badgeGradient[2]} 100%)`,
     borderRadius: "0 999px 999px 0",
     boxShadow: `0 14px 28px ${brandKit.badgeShadow}`,
   };
 
+  // Solid white disc with the brand's darkest gradient stop as the mark,
+  // matching the reference badge (the previous outlined-circle mark read as
+  // an afterthought at this size).
+  const badgeIconStyle: CSSProperties = {
+    width: BADGE.iconSize,
+    height: BADGE.iconSize,
+    borderRadius: "50%",
+    background: "#FFFFFF",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    flexShrink: 0,
+    fontFamily: BRAND_FONT_FAMILY,
+    fontWeight: 700,
+    fontSize: Math.round(BADGE.iconSize * 0.56),
+    lineHeight: 1,
+    color: brandKit.badgeGradient[2],
+  };
+
   const badgeLabelStyle: CSSProperties = {
-    fontFamily: headlineFont,
-    fontWeight: 800,
-    fontSize: 30,
-    letterSpacing: 0.8,
+    fontFamily: BRAND_FONT_FAMILY,
+    fontWeight: 700,
+    fontSize: BADGE.fontSize,
+    letterSpacing: BADGE.letterSpacing,
     color: "#FFFFFF",
     textTransform: "uppercase",
     textShadow: "0 2px 0 rgba(0,0,0,0.18)",
     whiteSpace: "nowrap",
   };
 
-  const headlineBaseStyle: CSSProperties = {
+  // Bottom-anchored: grows upward as the headline gets longer, so it can
+  // never push down into TikTok's covered band. See HEADLINE.bottomInset.
+  const headlineStyle: CSSProperties = {
     position: "absolute",
-    top: 1262,
-    left: 48,
-    right: 60,
-    fontFamily: headlineFont,
-    fontWeight: 800,
-    fontSize: 74,
-    lineHeight: 1.36,
+    bottom: HEADLINE.bottomInset,
+    left: HEADLINE.left,
+    right: HEADLINE.rightInset,
+    fontFamily: BRAND_FONT_FAMILY,
+    fontWeight: 700,
+    fontSize: headlineFontSize,
+    lineHeight: HEADLINE.lineHeight,
     letterSpacing: 0.4,
     color: "#FFF8EC",
     WebkitTextStroke: `1.5px ${brandKit.headlineStroke}`,
@@ -115,12 +131,10 @@ export const HookCard: React.FC<HookCardProps> = ({ headline, brandKit }) => {
         }}
       />
       <div style={badgeStyle}>
-        <div style={badgeIconStyle}>
-          <span style={{ color: "#FFFFFF", fontWeight: 800, fontSize: 20, fontFamily: headlineFont }}>©</span>
-        </div>
+        <div style={badgeIconStyle}>©</div>
         <span style={badgeLabelStyle}>{brandKit.badgeLabel}</span>
       </div>
-      <div style={headlineBaseStyle}>{headline}</div>
+      <div style={headlineStyle}>{headline}</div>
     </AbsoluteFill>
   );
 };

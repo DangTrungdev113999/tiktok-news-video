@@ -2,6 +2,7 @@ import React from "react";
 import type { CSSProperties } from "react";
 import { AbsoluteFill, useCurrentFrame } from "remotion";
 import type { CaptionLine } from "./spec-types";
+import { BRAND_FONT_FAMILY, CAPTION } from "./layout";
 
 /**
  * ONE global karaoke-caption overlay, rendered outside any per-scene
@@ -17,13 +18,17 @@ import type { CaptionLine } from "./spec-types";
  * stays) gold the moment its own speech starts and never reverts -- so at
  * any instant, every word spoken so far in the line reads gold and every
  * word still to come reads white. No scale/zoom on the active word.
+ *
+ * 2026-07-20: the type is now Oswald 700 at the same size as the hook
+ * headline (shared via ./layout, replacing a standalone Inter 64px), and a
+ * caption group may wrap onto TWO lines instead of being forced into one.
+ * The block also moved up out of TikTok's covered bottom band -- at the old
+ * `bottom: 260` the captions rendered underneath TikTok's own UI on a real
+ * phone.
  */
 export interface CaptionsProps {
   lines: CaptionLine[];
 }
-
-const READ_COLOR = "#FFD24C";
-const UNREAD_COLOR = "#FFFFFF";
 
 function findActiveLine(lines: CaptionLine[], frame: number): CaptionLine | null {
   // Lines are built in ascending, non-overlapping frame order -- a linear
@@ -34,11 +39,13 @@ function findActiveLine(lines: CaptionLine[], frame: number): CaptionLine | null
   return null;
 }
 
+// Bottom-anchored so a two-line group grows UPWARD; the bottom edge (and so
+// the clearance from TikTok's covered band) stays constant either way.
 const outerStyle: CSSProperties = {
   position: "absolute",
-  left: "5%",
-  right: "5%",
-  bottom: 260,
+  left: CAPTION.left,
+  right: CAPTION.rightInset,
+  bottom: CAPTION.bottomInset,
   display: "flex",
   justifyContent: "center",
 };
@@ -48,15 +55,17 @@ const innerStyle: CSSProperties = {
   flexWrap: "wrap",
   justifyContent: "center",
   alignItems: "flex-end",
-  gap: 16,
+  columnGap: CAPTION.wordGap,
+  rowGap: 0,
   maxWidth: "100%",
 };
 
 const wordBaseStyle: CSSProperties = {
-  fontFamily: "'Inter', 'Helvetica Neue', Arial, sans-serif",
-  fontWeight: 800,
-  fontSize: 64,
-  lineHeight: 1.2,
+  fontFamily: BRAND_FONT_FAMILY,
+  fontWeight: 700,
+  fontSize: CAPTION.fontSize,
+  lineHeight: CAPTION.lineHeight,
+  textTransform: "uppercase",
   WebkitTextStroke: "6px rgba(0,0,0,0.85)",
   paintOrder: "stroke fill" as CSSProperties["paintOrder"],
   textShadow: "0 2px 10px rgba(0,0,0,0.45)",
@@ -79,7 +88,7 @@ export const Captions: React.FC<CaptionsProps> = ({ lines }) => {
                 key={`${w.startFrame}-${i}`}
                 style={{
                   ...wordBaseStyle,
-                  color: isRead ? READ_COLOR : UNREAD_COLOR,
+                  color: isRead ? CAPTION.readColor : CAPTION.unreadColor,
                 }}
               >
                 {w.text}
