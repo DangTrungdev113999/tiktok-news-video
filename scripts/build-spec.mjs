@@ -406,8 +406,10 @@ const SLIDE_FALLBACK_FILL = 1.3;
 // End-of-screen punch: a quick push into the cut, the punctuation that keeps a
 // feed video moving. Set at the author's request ("cuoi moi screen cho 1 hieu
 // ung chuyen canh don gian... tao nhip nhanh cho video").
-const PUNCH_SEC = 0.25;
-const PUNCH_SCALE = 1.12;
+// Twice as long and a third less scale than the first attempt (0.25s / 1.12),
+// which the author found too abrupt. Growth per frame drops ~3x.
+const PUNCH_SEC = 0.5;
+const PUNCH_SCALE = 1.08;
 /** Keeps an entrance-only shot from being frozen when no zoom was asked for. */
 const ENTRANCE_IDLE_ZOOM = 1.08;
 
@@ -609,12 +611,21 @@ function resolveAssetMotion(asset, probe, warnings) {
     // foreground + reveal), so it ships a DEGENERATE slide -- from === to, no
     // travel. One component then serves both cases instead of teaching the
     // cover and blur-pad paths about entrances too.
+    // CONTAIN, not the slide's scale. slideForegroundScale inflates the
+    // picture past the frame so a traverse has somewhere to travel -- but this
+    // shot does not travel. Inheriting that made the picture wider than the
+    // frame, so the flip's fold swept across the WHOLE frame and read as
+    // turning the blur layer too, which is exactly what the author saw. At
+    // contain the fold runs across the picture alone, with the blur band
+    // sitting still around it.
+    const containScale = Math.min(WIDTH / probe.width, HEIGHT / probe.height);
+    const coverScale = Math.max(WIDTH / probe.width, HEIGHT / probe.height);
     overrides.effect = 'slide';
     overrides.slide = {
       axis: 'x',
       from: 0.5,
       to: 0.5,
-      foregroundScale: slideForegroundScale('x', probe, asset.fillFullScreen),
+      foregroundScale: asset.fillFullScreen ? coverScale : containScale,
     };
     if (overrides.zoomTo === undefined) {
       overrides.zoomTo = ENTRANCE_IDLE_ZOOM;

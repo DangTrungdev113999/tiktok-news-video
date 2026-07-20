@@ -68,10 +68,13 @@ const SLIDE_ANCHOR_RAMP = 0.25;
 // by an invisible amount so no edge can ever creep in.
 const SLIDE_TRAVERSAL_SAFETY = 0.98;
 
-// The exit punch ACCELERATES into the cut -- the opposite gesture to an
-// entrance. An ease-out here would do most of its travel early and then coast
-// into the boundary, which reads as the shot sagging rather than snapping.
-const PUNCH_EASING = Easing.bezier(0.4, 0, 1, 1);
+// The exit punch builds into the cut -- the opposite gesture to an entrance,
+// so an ease-OUT would be wrong: it does most of its travel early and coasts
+// into the boundary, which reads as the shot sagging rather than lifting.
+// But a hard ease-in (0.4, 0, 1, 1) piles almost all the movement into the
+// last few frames and reads as a jerk, which is what the author saw. This
+// curve still accelerates, just far more evenly across the run.
+const PUNCH_EASING = Easing.bezier(0.35, 0, 0.65, 1);
 
 // A picture flying in should feel like it ARRIVES: most of the travel early,
 // then a settle. The house ease-out is exactly that curve.
@@ -662,9 +665,14 @@ const LayeredMedia: React.FC<{
         <Img src={src} style={foregroundStyle} />
       )}
       {creaseT !== undefined ? (
-        <AbsoluteFill
+        // Shares the foreground's exact box, NOT the frame's. As an
+        // AbsoluteFill it darkened a diagonal across the blur bands too, which
+        // made the fold look like it was turning the whole frame rather than
+        // the picture.
+        <div
           style={{
-            clipPath: flipBookClipPath(creaseT),
+            ...foregroundStyle,
+            objectFit: undefined,
             // 135deg runs top-left -> bottom-right, the same axis the fold
             // sweeps along, so the dark band sits exactly on the moving edge.
             background: `linear-gradient(135deg, transparent ${(creaseT * 100 - 7).toFixed(2)}%, ${FLIP_BOOK_CREASE} ${(creaseT * 100).toFixed(2)}%, transparent ${(creaseT * 100 + 1).toFixed(2)}%)`,
