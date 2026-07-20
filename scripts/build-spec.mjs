@@ -86,20 +86,28 @@ export function classifyAsset(probe, occurrence = { landscape: 0, portrait: 0, s
     return { effect: 'passthrough', fit };
   }
 
+  // EVERY image is blur-padded by default (2026-07-20, at the author's
+  // direction: "cac anh toi can co blur o tren duoi hoac o trai phai, tuy ty
+  // le"). The whole picture is shown at its natural contain size and the frame
+  // is filled with a blurred copy, so the bands land top/bottom for a
+  // landscape and left/right for a portrait -- decided by the ratio, not by a
+  // threshold. Edge-to-edge is now strictly opt-in, via `fill_full_screen`.
+  //
+  // This replaced a crop-loss threshold that sent only extreme panoramas to
+  // blur-pad. Nothing is lost by it: cropping to fill is the choice that
+  // discards content, so making it the one you have to ASK for is the safer
+  // default -- and it is what the house look actually is.
+  const fit = 'contain-blur-pad';
+
   if (ratioWH >= LANDSCAPE_RATIO) {
     const direction = occurrence.landscape % 2 === 0 ? 'left' : 'right';
-    // Extreme panoramas would lose too much to a center-crop -> blur-pad.
-    // A plain 16:9 photo (cropFraction ~0.68) is normal Ken-Burns material
-    // and stays on cover; only genuine panoramas (ratioWH > ~2.25) cross
-    // the 0.75 threshold.
-    const fit = cropFraction > IMAGE_EXTREME_CROP_FRACTION ? 'contain-blur-pad' : 'cover';
     return { effect: 'pan', direction, fit };
   }
 
   if (ratioWH <= 1 / PORTRAIT_RATIO) {
     // Push/pull alternation across consecutive portrait scenes.
     const zoomVariant = occurrence.portrait % 2 === 0 ? 'in' : 'out';
-    return { effect: 'zoom', zoomVariant, fit: 'cover' };
+    return { effect: 'zoom', zoomVariant, fit };
   }
 
   if (ratioWH >= SQUARE_MIN && ratioWH < LANDSCAPE_RATIO) {
@@ -107,14 +115,12 @@ export function classifyAsset(probe, occurrence = { landscape: 0, portrait: 0, s
     // extra variety across consecutive square-ish scenes.
     const direction = occurrence.square % 4 < 2 ? 'left' : 'right';
     const effect = occurrence.square % 2 === 0 ? 'diagonal' : 'rotate';
-    return { effect, direction, fit: 'cover' };
+    return { effect, direction, fit };
   }
 
-  // Fallback for anything between the square-ish upper bound and the
-  // portrait lower bound that the three ranges above didn't already catch
-  // (shouldn't normally happen given the thresholds are contiguous, but
-  // never silently fall through with no effect assigned).
-  return { effect: 'zoom', zoomVariant: 'in', fit: 'cover' };
+  // Fallback for anything the three contiguous ranges above didn't catch --
+  // never silently fall through with no effect assigned.
+  return { effect: 'zoom', zoomVariant: 'in', fit };
 }
 
 // Karaoke caption chunking: how many words are shown together as ONE group.
@@ -380,15 +386,23 @@ function slideAnchorScale(anchorY) {
 /** Below this many pixels of overflow along the travel axis there is nothing to slide across. */
 const SLIDE_MIN_OVERFLOW_PX = 40;
 /**
- * Blur band left on the axis PERPENDICULAR to travel, as a fraction of that
- * axis. The author's model is a stable blur layer with the sharp picture
- * moving over it, so a slide fills the axis it travels along (no band is ever
- * slid past) but stays deliberately short across the other one, where the
- * familiar band shows.
+ * How far past the frame a slide's picture is stretched along its travel axis.
+ * The picture is painted as SMALL as it can be while still having this much to
+ * travel over -- small painted size means big blur bands, so minimising the
+ * scale is what maximises the band. (A fixed 10% band instead left a 3.6:1
+ * photo with a 192px sliver that read as full-bleed, because the backdrop is a
+ * blurred copy of the same picture and the colours match.)
  */
-const SLIDE_BAND_FRACTION = 0.1;
+const SLIDE_TRAVEL_FILL = 1.5;
 /** How long an entrance takes. Long enough to read, short enough not to cost the shot. */
 const ENTRANCE_SEC = 0.75;
+/**
+ * When no scale can both overflow along the travel axis AND stay short across
+ * it, the slide is enlarged past cover until it has at least this much of the
+ * frame to travel over. Losing the blur band is much better than losing the
+ * movement: a slide that cannot move is not a slide.
+ */
+const SLIDE_FALLBACK_FILL = 1.3;
 /** Keeps an entrance-only shot from being frozen when no zoom was asked for. */
 const ENTRANCE_IDLE_ZOOM = 1.08;
 
@@ -407,12 +421,14 @@ function slideForegroundScale(axis, probe, fillFullScreen) {
   if (fillFullScreen) return coverScale;
 
   const horizontal = axis !== 'y';
-  const banded = horizontal
-    ? (HEIGHT * (1 - 2 * SLIDE_BAND_FRACTION)) / probe.height
-    : (WIDTH * (1 - 2 * SLIDE_BAND_FRACTION)) / probe.width;
-
-  const travelExtent = horizontal ? probe.width * banded - WIDTH : probe.height * banded - HEIGHT;
-  return travelExtent >= SLIDE_MIN_OVERFLOW_PX ? banded : coverScale;
+  // Smallest scale that still leaves something to travel over. Starting from
+  // contain (the whole picture visible, biggest possible bands) and growing
+  // only as far as the traverse needs keeps as much blur as the tag allows.
+  const containScale = Math.min(WIDTH / probe.width, HEIGHT / probe.height);
+  const needed = horizontal
+    ? (WIDTH * SLIDE_TRAVEL_FILL) / probe.width
+    : (HEIGHT * SLIDE_TRAVEL_FILL) / probe.height;
+  return Math.max(containScale, needed);
 }
 
 /**
@@ -485,11 +501,21 @@ function resolveSlideTag(slide, probe, filename, fillFullScreen, warnings) {
   }
 
   const overflowPx = paintedAlong - frameAlong;
+  // Warn only when the traverse cost the band ENTIRELY -- growing the picture
+  // to have somewhere to travel is normal and expected, losing the house look
+  // is not.
+  const paintedAcross = (horizontal ? probe.height : probe.width) * foregroundScale;
+  const frameAcross = horizontal ? HEIGHT : WIDTH;
+  if (!fillFullScreen && paintedAcross >= frameAcross) {
+    warnings.push(
+      `${filename} is ${probe.width}x${probe.height}, which is not long enough on the ` +
+      `${horizontal ? 'horizontal' : 'vertical'} axis to slide across AND keep a blur band -- ` +
+      `it fills the frame edge-to-edge instead, so it is cropped more than usual.`
+    );
+  }
   if (overflowPx < SLIDE_MIN_OVERFLOW_PX) {
     warnings.push(
-      `${filename} is ${probe.width}x${probe.height} -- once it fills a 1080x1920 frame there is ` +
-      `nothing ${horizontal ? 'either side' : 'above or below'} to slide across, so the shot will ` +
-      `barely move. Slides want a picture that is long on the axis they travel.`
+      `${filename}: nothing to slide across even after enlarging -- the shot will barely move.`
     );
   } else if (Math.abs(to - from) < SLIDE_MIN_TRAVEL) {
     warnings.push(

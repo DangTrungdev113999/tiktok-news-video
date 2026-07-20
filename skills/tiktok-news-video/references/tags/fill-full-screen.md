@@ -10,48 +10,54 @@ outside the frame is cropped away. No blurred backdrop, no letterbox bands.
 
 ## What it is actually overriding
 
-`classifyAsset` picks the fit automatically, from how much a centre-crop would
-throw away:
+**Every image is blur-padded by default.** The whole picture is shown at its
+natural size and the rest of the frame is filled with a blurred copy, so the
+bands land wherever the ratio puts them — top and bottom for a landscape, left
+and right for a portrait. Nothing is decided by a threshold; it follows from
+the aspect ratio.
 
-| Asset | Automatic fit | What the flag changes |
+This flag is the opt-out. It says: crop this one to the edges instead.
+
+| Asset | Default | With the flag |
 |---|---|---|
-| Normal photo (16:9, 4:3, portrait, square) | `cover` already | **nothing** |
-| Extreme panorama (crop loss > 75%) | `contain-blur-pad` | → `cover` |
-| Video, unless already near 9:16 (crop loss > 15%) | `contain-blur-pad` | → `cover` |
+| Any image | `contain-blur-pad` — bands by ratio | `cover` — edge to edge |
+| Video, already near 9:16 | `cover` | unchanged |
+| Video, anything else | `contain-blur-pad` | `cover` |
 
-**Say this to the author when they use it.** Cover is already the default for
-ordinary photographs, so on a normal landscape shot the flag does nothing
-visible. Someone who expects blur bands to be the usual case will test it on a
-plain photo, see no change, and conclude it is broken. It bites on panoramas
-and on video.
-
-(Making blur-pad the *default*, so that edge-to-edge becomes the everyday
-opt-in, is a different and much larger change — it alters how every existing
-asset renders. It has not been made. Don't infer it from this flag.)
+(This changed on 2026-07-20. Before, cover was the default and blur-pad was
+reserved for extreme panoramas, which made this flag close to a no-op on
+ordinary photos. It is now one of the most consequential tags in the set.)
 
 ## The cost it buys
 
-Forcing cover on an asset the classifier sent to blur-pad means accepting the
-crop the classifier was avoiding:
+Cover means accepting the crop that blur-pad exists to avoid, and in a 9:16
+frame that crop is severe:
 
-- A 3:1 panorama cropped to 9:16 keeps about a third of its width. If the
-  subject is off to one side, the subject is what gets cut.
-- A 16:9 talking-head video cropped to 9:16 loses ~44% of the width. Faces sit
-  off-centre more often than not, so this is how you crop someone's head in half.
+- A 16:9 photo keeps about **37% of its width**. Anything either side of
+  centre is gone.
+- A 3.6:1 photo keeps about **15%**. If the subject is off to one side, the
+  subject is what gets cut.
+- A 16:9 talking-head video loses ~44% of its width. Faces sit off-centre more
+  often than not, so this is how you crop someone's head in half.
 
-The flag is the author saying they've looked at the picture and want the crop.
-Take them at their word — but if the asset is a video, or the crop loss is
-over 75%, **say what will be lost** in the Step 6 report. One line is enough:
+The flag is the author saying they have looked at the picture and want the
+crop. Take them at their word — but **say what will be lost** in the Step 6
+report whenever the crop exceeds half the width, or the asset is a video. One
+line is enough:
 `video_1.mp4 — fill_full_screen: cắt ~44% chiều ngang, kiểm tra lại mặt người có bị cắt không`.
+
+Reach for it when the picture genuinely has nothing at its edges, or when a
+full-bleed frame is worth more than the missing sides — a hook shot, a texture,
+a face already dead centre.
 
 ## Interaction with other tags
 
 - **`focus_object`** — composes cleanly and is the good pairing. The focus tag
   aims the crop; this flag removes the bands. If a panorama has to be cropped,
   a focus point is what stops the crop landing on the wrong half.
-- **`slide_left_right` / `slide_right_left`** — redundant. A slide already
-  fills the frame on its axis of travel (see `slide-left-right.md`). Harmless,
-  but don't teach the pair together.
+- **`slide_left_right` / `slide_right_left` / `slide_top_bottom`** — composes,
+  and it matters. A slide keeps a blur band on the axis it does NOT travel
+  along; this flag removes it, so the traverse runs edge to edge.
 
 ## What ships
 

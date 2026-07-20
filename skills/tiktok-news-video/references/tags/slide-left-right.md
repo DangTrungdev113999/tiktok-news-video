@@ -84,8 +84,15 @@ That single rule settles every question about slides and blur:
 
 So along the axis it travels, the picture is **wider than the frame** — no
 blurred band is ever slid past, which is the author's rule *"lia sang phải thì
-phần blur bên trái cũng phải mất đi"*. Across the other axis it is deliberately
-**shorter** than the frame, and that is where the familiar blur band shows.
+phần blur bên trái cũng phải mất đi"*. Across the other axis it stays
+**shorter** than the frame, and that is where the blur band shows.
+
+The picture is painted as **small as it can be** while still having somewhere
+to travel — smaller picture means bigger bands, so minimising the scale is what
+maximises the blur. A 3.6:1 photo keeps ~737px of band top and bottom and still
+has 540px to traverse. (A fixed 10% band was tried first and was wrong: a 192px
+sliver of blur against a backdrop that is a blurred copy of the same picture
+reads as full-bleed, and the author said so.)
 
 `fill_full_screen` removes the remaining band by scaling the picture to cover
 instead — see the combination table in `README.md`.

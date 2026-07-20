@@ -13,6 +13,12 @@ The third line is the normal case. **Absent tag = automatic.** No tag is ever
 required, and an author who types only filenames must always get a working
 video.
 
+**The default look is blur-padded, not full-bleed.** Every image is shown whole
+at its natural size, with a blurred copy filling the rest of the frame — bands
+top and bottom for a landscape, left and right for a portrait, decided by the
+ratio. Edge-to-edge is opt-in via `fill_full_screen`, because cropping is the
+choice that throws content away and so is the one worth asking for.
+
 ## Grammar
 
 | Rule | Detail |

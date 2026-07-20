@@ -1,3 +1,9 @@
+> **Superseded 2026-07-20 — fit rules only.** Every image now defaults to
+> `contain-blur-pad`, with bands placed by aspect ratio; `cover` is opt-in via
+> the `fill_full_screen` tag. Any crop-loss threshold described below no longer
+> selects the fit. The EFFECT rules (pan / zoom / diagonal / rotate by aspect
+> class) are unchanged and still authoritative.
+
 # Visual effect catalog — deterministic, aspect-ratio-driven
 
 > Locked house rule: **one parametric Remotion `<Scene>` component**, never
