@@ -11,11 +11,11 @@ copy-paste chi tiết ở **[SETUP.md](./SETUP.md)**. Phần dưới đây dành
 ## Dùng thế nào
 
 1. Copy/clone thư mục này về máy (Windows hoặc Mac đều được).
-2. Mở Claude Code/Desktop trong thư mục này, chạy `/init` — làm 1 lần duy
+2. Mở Claude Code/Desktop trong thư mục này, chạy `/tiktok-news-video-init` — làm 1 lần duy
    nhất trên mỗi máy. Bước này tự kiểm tra/cài ffmpeg + Remotion, rồi hỏi bạn
    muốn lưu output ở đâu + API key ElevenLabs (nếu có).
 3. Bỏ ảnh/video vào thư mục `assets/`.
-4. Chạy `/make-video`, paste kịch bản theo dạng:
+4. Chạy `/tiktok-news-video`, paste kịch bản theo dạng:
    ```
    Scene 1: [nội dung] — ảnh: hop-bao.jpg
    Scene 2: [nội dung] — video: phong-van.mp4

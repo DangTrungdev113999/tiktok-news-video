@@ -34,8 +34,8 @@ Gõ lần lượt 2 lệnh sau:
 /plugin install tiktok-news-video@tiktok-news-video-marketplace
 ```
 
-Sau khi cài xong, chạy `/init`, trả lời các câu hỏi (thư mục output, API key
-ElevenLabs). Xong thì dùng `/make-video` để tạo video.
+Sau khi cài xong, chạy `/tiktok-news-video-init`, trả lời các câu hỏi (thư mục output, API key
+ElevenLabs). Xong thì dùng `/tiktok-news-video` để tạo video.
 
 ## Claude Code Desktop (app Claude, tab **Code** — không phải tab Chat)
 
@@ -49,7 +49,7 @@ sau:
 2. Trong khung chat, bấm nút **+** cạnh ô nhập → **Plugins** → **Add plugin**.
 3. Nhập nguồn marketplace: `DangTrungdev113999/tiktok-news-video`, tìm và
    cài plugin "TikTok News Video".
-4. Gõ `/init` trong chat, trả lời các câu hỏi. Xong thì gõ `/make-video`.
+4. Gõ `/tiktok-news-video-init` trong chat, trả lời các câu hỏi. Xong thì gõ `/tiktok-news-video`.
 
 (Nếu bạn từng cài qua CLI trên máy này rồi, tab Code sẽ tự thấy plugin luôn
 vì CLI và Desktop dùng chung cấu hình — không cần cài lại.)
@@ -94,7 +94,7 @@ luôn chọn **Local** (xem lưu ý ở đầu file).
 ## Sau khi init xong
 
 1. Copy ảnh/video vào thư mục `assets/`.
-2. Gọi lệnh tạo video (`/make-video` hoặc `$tiktok-news-video`/`@tiktok-news-video`),
+2. Gọi lệnh tạo video (`/tiktok-news-video` hoặc `$tiktok-news-video`/`@tiktok-news-video`),
    paste kịch bản dạng:
    ```
    Scene 1: [nội dung] — ảnh: hop-bao.jpg
@@ -104,7 +104,7 @@ luôn chọn **Local** (xem lưu ý ở đầu file).
    (lồng tiếng, nhạc nền, hiệu ứng, render) tự động.
 
 `assets/`, `bgm-library/`, `output/` nằm trong **thư mục workspace** bạn chọn
-lúc `/init` (mặc định: `~/Desktop/tiktok-news-video-workspace`) — không phải
+lúc `/tiktok-news-video-init` (mặc định: `~/Desktop/tiktok-news-video-workspace`) — không phải
 trong thư mục cài plugin. Thư mục này KHÔNG bị mất/reset khi plugin có bản
 cập nhật mới.
 

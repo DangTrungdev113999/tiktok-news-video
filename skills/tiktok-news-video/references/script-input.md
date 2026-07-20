@@ -21,9 +21,20 @@ is to render it, not to edit it. (A house-style rewrite step existed until
 The only text you may touch is `ttsText` — the ElevenLabs audio-tag markup
 built in Step 2 — and that changes delivery, never wording.
 
-For each filename, verify the file exists under `$WORKSPACE_DIR/assets/` — if
-ANY are missing, stop here and list the missing filenames. This is the one
-validation that must block before doing any paid API work.
+## Filenames are written loosely on purpose
+
+The author may write `anh_1.jpg`, `anh_1`, `ảnh 1`, `Anh 1` or `anh-1` — all
+five find `assets/<folder>/anh_1.jpg`, and the folder never has to be repeated.
+Take what they typed through **unchanged**; `buildSpec` resolves it in one
+place at Step 4. Don't try to guess the extension or the folder yourself.
+
+Read `asset-naming.md` for the rule and for what `clean-source` produces.
+
+For each filename, verify the file exists under `$WORKSPACE_DIR/assets/`
+(`buildAssetIndex` in `scripts/resolve-asset.mjs` answers this — it applies the
+same resolution the build will) — if ANY are missing, or any name matches two
+files in different folders, stop here and list them. This is the one validation
+that must block before doing any paid API work.
 
 If the user separately mentions a video file wasn't embeddable in the doc but
 names it in the script, treat that name exactly like any other filename — it

@@ -479,7 +479,7 @@ function printFinalChecklist({ ffmpegInfo, remotionResult, config }) {
   const allCriticalOk = items[0].ok; // Node bắt buộc; các mục khác chỉ cảnh báo
   log("");
   if (allCriticalOk) {
-    log("Xong! Bạn có thể bắt đầu tạo video (xem lệnh /make-video trong Claude Code).");
+    log("Xong! Bạn có thể bắt đầu tạo video (xem skill /tiktok-news-video trong Claude Code).");
   }
   if (items.some((i) => !i.ok)) {
     log("Lưu ý: một vài mục ở trên còn thiếu (❌) — bạn vẫn có thể dùng thử, nhưng hãy xử lý các mục đó trước khi render video thật.");

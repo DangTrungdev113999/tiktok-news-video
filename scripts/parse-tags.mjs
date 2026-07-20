@@ -74,6 +74,14 @@ export const TAG_SLOTS = {
 
 const SHARE_RE = /\((\d+(?:\.\d+)?)\s*%\)/;
 
+/**
+ * A leading `ảnh 1` / `anh 1` / `video 2` / `hình 3`, optionally with the
+ * `_des` suffix or an extension already attached. Anchored to the start: only
+ * the filename position is relaxed, never a tag value (`focus_object: người
+ * thứ 2` must keep its spaces).
+ */
+const SPACED_ASSET_REF_RE = /^(ảnh|anh|hình|hinh|video|clip)\s+(\d+)/i;
+
 /** Looks like someone meant it as a key: an identifier followed by a colon. */
 const UNKNOWN_KEY_RE = /^([A-Za-z][\w-]*)\s*:/;
 
@@ -113,6 +121,13 @@ export function parseAssetLine(line) {
 
   // Give every pipe breathing room so it tokenises like any other separator.
   text = text.replace(/\|/g, ' | ').trim();
+
+  // "filename is the first token" breaks on `ảnh 1`, which is two tokens with
+  // a space. Re-join that ONE shape -- a bare reference word followed by a
+  // number -- before tokenising. Scoped to the words `clean-source` actually
+  // emits, so a real typo still fails as a missing asset instead of being
+  // matched to whatever looked closest. See references/asset-naming.md.
+  text = text.replace(SPACED_ASSET_REF_RE, (_m, word, n) => `${word}_${n}`);
 
   // The filename is the first token, minus any separator stuck to it.
   const [rawFilename, ...restTokens] = text.split(/\s+/);

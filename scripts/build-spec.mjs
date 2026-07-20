@@ -15,6 +15,7 @@
 import path from 'node:path';
 import { writeFile } from 'node:fs/promises';
 import { probeAsset } from './probe-asset.mjs';
+import { buildAssetIndex } from './resolve-asset.mjs';
 
 export const FPS = 30;
 export const WIDTH = 1080;
@@ -792,7 +793,19 @@ export async function buildSpec({ scenes, workspaceDir, narrationAudioPath, bgmA
   const missingAssets = [];
   const captionLines = [];
 
+  // What the author typed -> a real path under assets/. Resolved ONCE, here,
+  // and written back onto the scene, so the probe below and the `assetPath`
+  // that lands in spec.json cannot disagree. See references/asset-naming.md.
+  const assetIndex = await buildAssetIndex(workspaceDir);
+
   for (const scene of scenes) {
+    const resolved = assetIndex.resolve(scene.assetFilename);
+    if (resolved.error) {
+      missingAssets.push(resolved.error);
+      continue;
+    }
+    scene.assetFilename = resolved.path;
+
     const assetAbsPath = path.resolve(workspaceDir, 'assets', scene.assetFilename);
     let probe;
     try {

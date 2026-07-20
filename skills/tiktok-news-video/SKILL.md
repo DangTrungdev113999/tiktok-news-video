@@ -1,7 +1,7 @@
 ---
 name: tiktok-news-video
 user-invocable: true
-description: "TikTok News Video pipeline. From images/videos + a scene script pasted in chat: take the user's scene text VERBATIM as the narration (no rewriting) -> resolve narration (user MP3 + forced alignment, or ElevenLabs v3 TTS with built-in timestamps) -> resolve BGM (saved library or new upload) -> resolve which brand kit to use (auto if only one exists) -> classify each asset's motion by aspect ratio (pan/zoom/diagonal/passthrough + blur-pad for non-filling assets) -> render END-TO-END to a finished MP4 via Remotion. BGM choice always asks the user; brand choice only asks when 2+ brand folders exist; everything else is automatic, including bug fixing. Invoked by /make-video."
+description: "TikTok News Video pipeline. From images/videos + a scene script pasted in chat: take the user's scene text VERBATIM as the narration (no rewriting) -> resolve narration (user MP3 + forced alignment, or ElevenLabs v3 TTS with built-in timestamps) -> resolve BGM (saved library or new upload) -> resolve which brand kit to use (auto if only one exists) -> classify each asset's motion by aspect ratio (pan/zoom/diagonal/passthrough + blur-pad for non-filling assets) -> render END-TO-END to a finished MP4 via Remotion. BGM choice always asks the user; brand choice only asks when 2+ brand folders exist; everything else is automatic, including bug fixing."
 argument-hint: "<scene script pasted in chat>"
 ---
 
@@ -18,6 +18,7 @@ one for the step you're on rather than reading them all up front.
 |---|---|
 | `references/paths-and-config.md` | CODE vs WORKSPACE dirs, config file, where the house rules live |
 | `references/script-input.md` | Step 1: parse the scene script (used verbatim) |
+| `references/asset-naming.md` | How `anh_1` / `ảnh 1` resolves to a real file |
 | `references/narration-and-bgm.md` | Steps 2–3: TTS or forced alignment, BGM choice |
 | `references/motion.md` | Which movement each asset gets, and per-asset overrides |
 | `references/tags/README.md` | The tag grammar; one file per tag key, opened on demand |
@@ -27,6 +28,22 @@ one for the step you're on rather than reading them all up front.
 
 Background rationale for anything ambiguous:
 `docs/superpowers/specs/2026-07-17-tiktok-news-video-design.md`.
+
+## Starting a run
+
+You are the entry point — there is no dispatcher command in front of you (the
+thin `/make-video` and `/init` commands were deleted 2026-07-20; a command that
+only forwarded its arguments to a skill was one more place for the two
+descriptions to drift apart).
+
+So, before Step 1:
+
+- **No scene script in `$ARGUMENTS`?** Ask the user to paste it in chat,
+  referencing assets by the names already in `assets/`. Don't invent one.
+- **Ask once whether they have a ready MP3 narration**, or whether TTS should
+  generate it. Step 2 needs the answer either way.
+- **No `config.local.json`?** First run on this machine — hand off to
+  `tiktok-news-video-init` and don't render until it reports passing.
 
 ## Autonomy contract (read first)
 
