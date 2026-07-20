@@ -55,8 +55,20 @@ export const SAFE = {
 
 /** Flush-left ribbon badge on the hook card (brand name + logo mark). */
 export const BADGE = {
-  /** Sits at the photo -> gradient-card transition, per the approved render. */
-  top: 1185,
+  /**
+   * Sits ON the photo, clear ABOVE the gradient-card transition.
+   *
+   * Was 1185 -- level with the transition -- until 2026-07-20, when the author
+   * marked the target with a red line on a render. Measured off that
+   * screenshot: the line lands at y1125, so the badge's BOTTOM (top + height)
+   * has to clear it. 1030 + 90 = 1120, five pixels above.
+   *
+   * HEADLINE.bottomInset moved by the SAME 155px. Both must travel together:
+   * the headline grows upward from its bottom edge, and the clearance between
+   * a worst-case 5-line headline and this badge is only ~20px. Move one
+   * without the other and a long hook overlaps the badge.
+   */
+  top: 1030,
   height: 90,
   /**
    * Deliberately large: the reference badge insets its logo mark ~93px from
@@ -84,8 +96,14 @@ export const HEADLINE = {
   left: 96,
   /** 1080 - 194 = 886 = SAFE.rightBelowButtons -- clears the button column. */
   rightInset: 194,
-  /** 1920 - 343 = 1577: bottom edge, comfortably above SAFE.bottom. */
-  bottomInset: 343,
+  /**
+   * 1920 - 498 = 1422: bottom edge. Raised 155px on 2026-07-20 in lockstep
+   * with BADGE.top (read its comment for why they cannot move independently).
+   * Still comfortably above SAFE.bottom, and the 5-line worst case now tops
+   * out at y1140 against a badge bottom of 1120 -- the same ~20px clearance
+   * the old pair had.
+   */
+  bottomInset: 498,
   fontSize: 54,
   lineHeight: 1.34,
   /** Step down through these if the text would need more than `maxLines`. */
@@ -106,16 +124,29 @@ export const HEADLINE = {
   maxLines: 3,
 } as const;
 
-/** Karaoke captions: same family and same size as the headline, by design. */
+/**
+ * Karaoke captions: same FAMILY as the headline (that rule is the whole point
+ * of this file), but no longer the same size -- the author asked for 30% less
+ * on 2026-07-20 and the headline kept its own.
+ */
 export const CAPTION = {
   left: 60,
   rightInset: 194,
   /** 1920 - 350 = 1570 bottom edge -- above SAFE.bottom (1629). */
   bottomInset: 350,
-  fontSize: 54,
+  /** 54 x 0.7. The headline stays at 54; only the captions shrank. */
+  fontSize: 38,
   lineHeight: 1.34,
-  /** Horizontal space between words on the same line. */
-  wordGap: 18,
+  /**
+   * Horizontal space between words on the same line.
+   *
+   * Scaled WITH the font (18 x 0.7), and that is the load-bearing half of the
+   * change. A fixed 18px against a 30%-smaller glyph reads as 43% more air
+   * between words -- which is what "letter spacing too wide" actually was.
+   * Measured across four candidate families: the word gaps looked identical in
+   * all of them, because the gap never depended on the family at all.
+   */
+  wordGap: 12,
   readColor: "#FFD24C",
   unreadColor: "#FFFFFF",
 } as const;

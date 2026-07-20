@@ -130,10 +130,16 @@ export function classifyAsset(probe, occurrence = { landscape: 0, portrait: 0, s
 // words out with flex-wrap), so these bounds describe a whole group, not a
 // single rendered row. Sizing (2026-07-20, see
 // docs/superpowers/specs/2026-07-20-safe-zone-typography-design.md): the
-// caption box is 1080 - 60 - 194 = 826px wide at Oswald 700 / 54px, which
-// fits roughly 34 uppercase characters per rendered row -- so ~68 characters
-// over two rows. 52 leaves real slack for wide words and the 18px word gap
-// rather than betting on the estimate.
+// caption box is 1080 - 60 - 194 = 826px wide. At the original Oswald 700 /
+// 54px that fit roughly 34 uppercase characters per rendered row -- ~68 over
+// two rows -- and 52 left real slack for wide words and the word gap.
+//
+// The captions dropped to 38px on 2026-07-20, so ~48 characters now fit per
+// row and a 52-character group mostly lands on ONE row instead of filling
+// two. These bounds are deliberately NOT scaled up to match: they decide how
+// many words sit on screen at once, which is reading RHYTHM, and the author
+// asked for smaller text, not for more of it per group. Raising them is a
+// separate decision with its own look.
 const CAPTION_MAX_WORDS_PER_LINE = 9;
 const CAPTION_MAX_CHARS_PER_LINE = 52;
 
