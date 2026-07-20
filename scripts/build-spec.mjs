@@ -316,6 +316,16 @@ function resolveFocusPeaks(focus, startFrame, durationInFrames, filename, warnin
     return { ...rest, peakFrame: Math.min(Math.max(local, MIN_PEAK_LEAD_FRAMES), lastFrame) };
   });
 
+  // Several targets with no cue at all can't be timed -- every move would
+  // collapse onto the end of the shot. Multi-target exists FOR timing, so
+  // this is an author error worth naming rather than quietly degrading.
+  if (targets.length > 1 && resolved.every((t) => t.peakFrame === undefined)) {
+    warnings.push(
+      `${filename}: ${targets.length} focus targets but no cue on any of them -- ` +
+      `the camera has nothing to time the moves against. Add a \`lúc "..."\` to each.`
+    );
+  }
+
   // Several targets in one shot must be in time order, and far enough apart to
   // travel between. Out-of-order cues mean the author listed the subjects in a
   // different order than the narration names them -- worth saying, because the
