@@ -35,6 +35,16 @@ Two pushes back to back flatten out, which is exactly why the automatic
 classifier alternates them. If several consecutive shots are tagged, alternate
 them by hand for the same reason.
 
+## `target` runs backwards
+
+`zoom_out: 40%, target b trong anh_1_des.jpg` **starts** close on the marker and
+pulls back off it — the exact mirror of `zoom_in`'s aimed push. This is the
+strongest way to say "this, and here is where it sits": the viewer reads the
+detail first, then the context it belongs to.
+
+Only meaningful for a single target. Reversing a multi-target tour would just
+be the same tour in the other order, which the author can already write.
+
 ## What ships
 
 ```json

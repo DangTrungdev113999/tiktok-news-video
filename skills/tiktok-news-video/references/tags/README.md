@@ -97,14 +97,16 @@ assets.
 
 ## Registered keys
 
-| Key | Value | Reference |
-|---|---|---|
-| `focus_object` | free-form Vietnamese description of what to focus on | `focus-object.md` |
-| `fill_full_screen` | none — bare flag | `fill-full-screen.md` |
-| `zoom_in` | optional `50%` — how far past natural framing. Default 20% | `zoom-in.md` |
-| `zoom_out` | optional `50%` — same, pulling back | `zoom-out.md` |
-| `slide_left_right` | optional `20% 20%, top 20%` — start/end insets, vertical anchor | `slide-left-right.md` |
-| `slide_right_left` | optional — same grammar, mirrored | `slide-right-left.md` |
+| Key | Slot | Value | Reference |
+|---|---|---|---|
+| `focus_object` | traverse | free-form description of what to focus on | `focus-object.md` |
+| `slide_left_right` | traverse | optional `20% 20%, top 20%` | `slide-left-right.md` |
+| `slide_right_left` | traverse | optional — same grammar, mirrored | `slide-right-left.md` |
+| `slide_top_bottom` | traverse | optional — starts centred, drifts down | `slide-top-bottom.md` |
+| `zoom_in` | zoom | optional `50%`, and `target 1 trong anh_1_des.jpg` | `zoom-in.md` |
+| `zoom_out` | zoom | optional — same, pulling back | `zoom-out.md` |
+| `flip_book` | entrance | none — bare flag | `flip-book.md` |
+| `fill_full_screen` | fit | none — bare flag | `fill-full-screen.md` |
 
 When you meet a key in this table, **open its reference file before acting**.
 The table is the whole contract — a key not listed here is not implemented.
@@ -116,22 +118,54 @@ The parser distinguishes them, and so should you when teaching the syntax:
 | Kind | Written | Example |
 |---|---|---|
 | Value required | `key: value` | `focus_object` |
-| Bare flag | `key` alone; a value is ignored with a warning | `fill_full_screen` |
+| Bare flag | `key` alone; a value is ignored with a warning | `fill_full_screen`, `flip_book` |
 | Value optional | either; bare means "use the default" | `zoom_in`, `slide_left_right` |
 
-### Only one tag may own the motion
+## Tags fill SLOTS — different slots compose
 
-`focus_object`, `zoom_in`, `zoom_out`, `slide_left_right` and
-`slide_right_left` all decide what the camera does, so **at most one of them
-applies to a given asset**. When an author writes two, the more specific
-request wins and the other is reported, never silently dropped:
+Tags are not rivals in general. Each fills one slot, and **only two tags in the
+SAME slot conflict**:
+
+| Slot | Decides | Keys |
+|---|---|---|
+| `fit` | edge-to-edge or blur bands | `fill_full_screen` |
+| `entrance` | how the shot BEGINS | `flip_book` |
+| `traverse` | where the camera goes during it | `focus_object`, `slide_*` |
+| `zoom` | how close it gets | `zoom_in`, `zoom_out` |
+
+Within a slot the more specific key wins and the loser is **reported, never
+silently dropped** — for `traverse` that order is `focus_object` first, then the
+slides.
+
+### Worked combinations
 
 ```
-focus_object  >  slide_left_right / slide_right_left  >  zoom_in / zoom_out
+anh_1.jpg | fill_full_screen | slide_left_right 20%
 ```
+Travel left→right across the picture, starting 20% in from its left edge and
+running to the far edge (one number = the START inset; the end defaults to 0).
+`fill_full_screen` fills the `fit` slot, so the picture is scaled to cover and
+**the blur band that a slide normally leaves is gone** — edge to edge for the
+whole traverse.
 
-`fill_full_screen` is not in that contest — it chooses the framing, not the
-movement, and composes with any of them.
+```
+anh_1.jpg | zoom_in 20% | slide_left_right
+```
+Different slots, so they **compose**: the picture travels the full width AND
+closes in 20% over the shot. The two ramps multiply. This is not a conflict and
+must not be reported as one.
+
+```
+anh_1.jpg | flip_book | slide_left_right
+```
+The page turns onto the picture, which then travels. `flip_book` fills the
+`entrance` slot, so the slide does not ALSO fly in — one opening, not two.
+
+```
+anh_1.jpg | focus_object: người áo hồng | slide_left_right
+```
+The only real conflict here: both are the `traverse`. `focus_object` wins,
+the slide is ignored, and you say so in the Step 6 report.
 
 ## Adding a key
 

@@ -46,17 +46,49 @@ operator finding the shot. Nothing to configure.
 1.2. No new rendering path: this is the existing `zoom` branch of
 `computeTransform` with its endpoint made a parameter instead of a constant.
 
+## `target 1 trong anh_1_des.jpg` — aim the push
+
+```
+anh_1.jpg | zoom_in: 50%, target 1 trong anh_1_des.jpg
+anh_1.jpg | zoom_out: 40%, target b trong anh_1_des.jpg
+```
+
+By default a zoom pushes into the **middle** of the picture. `target` says push
+into a specific thing instead, named by a **marker drawn on a description
+image** — the same mechanism `focus_object` uses, and resolved the same way, so
+read the "Description images" section of `focus-object.md` before doing it.
+
+Markers are whatever the author drew: `1`, `2`, `3` or `a`, `b`, `c`. And the
+marker is a **pointer, not a coordinate** — find who or what it indicates, then
+take the position from the ORIGINAL image, never from the description image.
+
+An aimed zoom ships as a single-point `focus` entry with the percentage as its
+`scale`, rather than as a second aiming mechanism:
+
+```json
+"focus": [{ "x": 0.35, "y": 0.30, "scale": 1.5, "note": "target 1 = ao vest xanh" }]
+```
+
+`zoom_out` with a target runs it backwards — the shot **starts** close on the
+marker and pulls back to natural framing (`focusReverse: true`). Measured on a
+render, the two are exact mirrors of each other.
+
+As always, the push is clamped to what the picture allows, so a marker near an
+edge ends up larger and *closer* to centre rather than dead centre.
+
 ## Interaction with other tags
 
-- **`focus_object`** — the focus tag **wins**, and that is correct: an aimed
-  move already carries its own zoom (`scale`) and its own timing (`peakFrame`),
-  and the two zooms would fight. If an author writes both, use the focus tag
-  and say in the report that `zoom_in` was ignored. If they wanted a stronger
-  push toward the subject, the knob is the focus point's own `scale`.
-- **`fill_full_screen`** — composes cleanly; one picks the framing, the other
-  the motion.
-- **`slide_left_right` / `slide_right_left`** — conflict. Both own the
-  transform. The slide wins (it is the more specific request); report it.
+Tags fill slots, and only same-slot tags conflict (see `README.md`).
+
+- **`focus_object`** — same slot (`traverse`), so this is a real conflict and
+  the focus tag **wins**: it already carries its own zoom (`scale`) and its own
+  timing (`peakFrame`), and the two would fight. Report that `zoom_in` was
+  ignored. For a stronger push, the knob is the focus point's own `scale`.
+  Note that `zoom_in` with a `target` is not a conflict at all — it IS the
+  focus mechanism, so it simply becomes one.
+- **`slide_left_right` / `slide_right_left` / `slide_top_bottom`** — different
+  slot, so they **compose**: a traverse that also closes in. The ramps multiply.
+- **`fill_full_screen`**, **`flip_book`** — different slots; compose cleanly.
 
 ## Parsing
 

@@ -30,8 +30,13 @@ of this tag.)
 ## Description images — the reliable way to say who
 
 When the author writes `1 trong anh_2_des.jpg`, there is a second file beside
-the asset: the same photo with **numbered markers** drawn on it. `anh_2.jpg`
-is what gets rendered; `anh_2_des.jpg` exists only to tell you who "1" is.
+the asset: the same photo with **markers drawn on it**. `anh_2.jpg` is what
+gets rendered; `anh_2_des.jpg` exists only to tell you who "1" is.
+
+**A marker is whatever the author drew.** Digits (`1`, `2`, `3`), letters
+(`a`, `b`, `c`), or anything else legible — the only requirement is that it is
+findable in the description image and that the author referred to it. Do not
+insist on a numbering scheme; read what is there.
 
 This beats an ordinal description ("người thứ 3 từ trái") because it removes
 the counting, which is where misidentification comes from. Prefer it, and
@@ -47,6 +52,11 @@ you measure against.
 > zoomed into the mascot. Work out **who** the marker indicates, then find that
 > person **in the original image** and take their face. Never take coordinates
 > off the description image.
+
+The same marker mechanism is available to `zoom_in` / `zoom_out` via
+`target 1 trong anh_1_des.jpg` — see `zoom-in.md`. Resolve it exactly as you
+resolve a marker here; it is the same job, and an aimed zoom ships as a
+single-point `focus` entry.
 
 Description images are **not renderable assets**. Never put one in a screen's
 `assets[]`; it appears only inside a `focus_object` value.

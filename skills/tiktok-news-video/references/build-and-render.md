@@ -29,11 +29,20 @@ the author's intent, in the shape the tag was written in, on the asset:
 | `zoom_out` (bare) | `zoom: { variant: 'out' }` |
 | `slide_left_right: 20% 20%, top 20%` | `slide: { direction: 'left_right', startInset: 0.2, endInset: 0.2, anchorY: 0.1 }` |
 | `slide_right_left` (bare) | `slide: { direction: 'right_left' }` |
+| `slide_top_bottom` | `slide: { direction: 'top_bottom', ... }` |
+| `flip_book` | `flipBook: true` |
+| `zoom_in: 50%, target 1 trong x_des.jpg` | `zoom: { variant: 'in', amount: 0.5, aim: { x, y, note } }` |
 | `focus_object: ...` | `focus: [{ x, y, scale, peakSec?, note? }]` |
 
-`parsePercent()` and `parseSlideValue()` in `scripts/parse-tags.mjs` produce
-`amount`, `startInset`, `endInset` and `anchorY` for you — don't re-derive them
-by reading the tag text yourself.
+`parsePercent()`, `parseSlideValue()` and `parseTargetRef()` in
+`scripts/parse-tags.mjs` produce `amount`, `startInset`, `endInset`, `anchorY`
+and the target's marker for you — don't re-derive them by reading the tag text
+yourself.
+
+`aim` is the ONE field here you have to look at an image to fill: resolve the
+target marker to coordinates exactly as `focus_object` is resolved, and report
+what you picked. Everything else is arithmetic `buildSpec` does for you —
+including the entrance, which a slide gets automatically.
 
 ## Building `spec.json`
 

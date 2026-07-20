@@ -71,23 +71,39 @@ the pixels allow, which reads as "framed high", and that is what the author
 wanted. An anchor nearer the middle (`top 40%`) both needs less zoom and lands
 closer to its target.
 
-## Blur bands: a slide fills its own axis
+## The blur layer — how a slide sits on it
 
-**A slide never shows a blur band along the direction it travels.** Sliding
-right past a blurred left band would mean travelling across something that
-isn't in the photograph, so the tag forces `fit: "cover"` on the axis of
-travel — the picture is enlarged until it fills the frame horizontally, and
-the bands are gone for the whole move.
+The blur backdrop is **its own layer, and it does not move with the picture.**
+That single rule settles every question about slides and blur:
 
-> This is an interpretation of the author's rule *"lia sang phải thì phần blur
-> bên trái cũng phải mất đi"*, which has no exact literal reading. **Say so in
-> the Step 6 report** — one line, e.g. `slide lấp kín chiều ngang nên không còn
-> viền blur; nếu muốn giữ viền thì báo lại`. Cheap to reverse, expensive to
-> reverse-engineer from a render.
+| | the blurred backdrop | the sharp picture |
+|---|---|---|
+| while travelling | stays put | travels |
+| an anchor's zoom (`top 20%`) | **stays put** | zooms |
+| a `zoom_in` / `zoom_out` tag | scales with it | scales |
 
-The consequence is a real vertical crop on a very wide image, which is exactly
-what sliding across a panorama means. If that crop lands wrong, the vertical
-anchor is the fix.
+So along the axis it travels, the picture is **wider than the frame** — no
+blurred band is ever slid past, which is the author's rule *"lia sang phải thì
+phần blur bên trái cũng phải mất đi"*. Across the other axis it is deliberately
+**shorter** than the frame, and that is where the familiar blur band shows.
+
+`fill_full_screen` removes the remaining band by scaling the picture to cover
+instead — see the combination table in `README.md`.
+
+A slide needs a picture that is long on the axis it travels. If a portrait is
+asked to slide sideways there is no scale that both overflows horizontally and
+stays short vertically, so it falls back to cover and `buildSpec` says so in
+`spec.warnings`.
+
+## The entrance — a slide arrives, it doesn't cut
+
+Unless a `flip_book` claims the slot first, a horizontal slide **opens by flying
+in from the side opposite its travel**: `slide_left_right` enters from the
+right, then travels left→right. The blurred backdrop is already on screen when
+the shot starts, so what the viewer sees is the picture arriving onto a
+background that was already there — a transition into the screen, not a cut.
+
+The entrance takes 0.75s and eases out, so it lands rather than stopping.
 
 ## Why this is not a `computeTransform` branch
 
@@ -107,8 +123,10 @@ putting the whole picture physically in the layout, and translate across that.
 That is precisely what `PanMedia` was built to do, and `SlideMedia` is the same
 geometry with the endpoints and the anchor exposed.
 
-Keep `motion.md`'s claim honest: *most* effects are `computeTransform` branches;
-`pan` and `slide` are the two documented exceptions, both for this same reason.
+The component is called `LayeredMedia`, because it also carries the backdrop
+and the entrance. Keep `motion.md`'s claim honest: *most* effects are
+`computeTransform` branches; `pan` and `slide` are the two documented
+exceptions, both for this same reason.
 
 ## Pace and easing
 
@@ -123,8 +141,13 @@ middle where the eye is actually reading the picture, and settles at the end.
 ```json
 {
   "effect": "slide",
-  "fit": "cover",
-  "slide": { "from": 0.2, "to": 0.8, "anchorY": 0.1, "anchorScale": 1.6 },
+  "slide": {
+    "axis": "x",
+    "from": 0.2, "to": 0.8,
+    "foregroundScale": 1.536,
+    "anchorPos": 0.1, "anchorScale": 1.6
+  },
+  "entrance": { "type": "slide_in", "fromSide": "right", "durationInFrames": 23 },
   ...
 }
 ```
@@ -134,18 +157,27 @@ the insets** — `slide_right_left` differs only in that `from > to`. There is n
 direction field, because the endpoints already say which way the move goes and
 a sign convention on top of them would be one more thing to get backwards.
 
-`anchorY` is the centre of the named band (`top 20%` → 0.1), normalised against
-the picture, not the frame. Both are omitted entirely when the author gave no
-anchor, and the renderer then holds scale 1 and centres vertically.
+`anchorPos` is the centre of the named band (`top 20%` → 0.1), normalised
+against the picture, not the frame. Both are omitted entirely when the author
+gave no anchor, and the renderer then holds scale 1 and centres vertically.
+
+`foregroundScale` is the size the sharp picture is painted at, chosen to
+satisfy the blur-layer rule above. It ships as a number rather than being
+recomputed in the renderer, so the inset→position conversion and the render
+agree **by construction** instead of by two implementations happening to match.
 
 ## Interaction with other tags
 
 - **`focus_object`** — conflict; the focus tag wins. A slide is a survey of a
   whole picture and a focus is a move to one point in it; they cannot both own
   the transform. Report which one was applied.
-- **`zoom_in` / `zoom_out`** — conflict; the slide wins, as the more specific
-  request. For a zoom during a slide, use the vertical anchor, which brings one.
-- **`fill_full_screen`** — redundant, the slide already fills its axis. Harmless.
+- **`zoom_in` / `zoom_out`** — **compose.** They fill different slots, so
+  `zoom_in 20% | slide_left_right` is a traverse that also closes in. The two
+  ramps multiply.
+- **`fill_full_screen`** — composes; it removes the blur band on the
+  perpendicular axis by scaling the picture to cover.
+- **`flip_book`** — composes, and takes the entrance slot, so the slide does
+  not also fly in.
 
 ## Parsing
 
