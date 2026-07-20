@@ -61,6 +61,11 @@ const BLUR_PAD_BLUR_PX = 40;
 // mechanical linear ramp -- applied to every effect's interpolate() call.
 const MOTION_EASING = Easing.bezier(0.22, 1, 0.36, 1);
 
+// Focus pushes use a gentler ease-in-out instead: a move that has to land on
+// a spoken word must still be visibly travelling as the word arrives. See
+// computeFocusTransform.
+const FOCUS_EASING = Easing.bezier(0.4, 0, 0.2, 1);
+
 // Safety factor applied to the theoretical max crop overflow before letting
 // translate use it (leaves a little margin for rounding/anti-aliasing).
 const OVERFLOW_SAFETY = 0.85;
@@ -132,10 +137,25 @@ function computeFocusTransform(
 ): string {
   const endFrame = Math.max(durationInFrames - 1, 1);
   const targetScale = Math.max(focus.scale, 1);
-  const scale = interpolate(frame, [0, endFrame], [1, targetScale], {
+
+  // The push lands ON the moment that matters -- normally the frame where the
+  // narration says the subject's name -- and then HOLDS there for the rest of
+  // the shot (extrapolateRight: clamp). Peaking at the end of the shot
+  // instead would leave the move still travelling while the name is spoken,
+  // which is the thing this tag exists to avoid. Clamped into the shot so a
+  // mistimed cue can't produce a degenerate [0, 0] range.
+  const peakFrame = Math.min(Math.max(focus.peakFrame ?? endFrame, 1), endFrame);
+
+  // NOT the house MOTION_EASING here. That curve is a hard ease-out: it is
+  // ~93% of the way there by the halfway point, which is right for an ambient
+  // Ken-Burns drift but wrong for a move that has to LAND on a word -- the eye
+  // reads the arrival a third of the way in and the cue passes unmarked. This
+  // gentler ease-in-out keeps the travel spread across the run-up so the
+  // arrival coincides with the beat.
+  const scale = interpolate(frame, [0, peakFrame], [1, targetScale], {
     extrapolateLeft: "clamp",
     extrapolateRight: "clamp",
-    easing: MOTION_EASING,
+    easing: FOCUS_EASING,
   });
 
   // What may move is bounded by whichever is SMALLER: the painted picture or

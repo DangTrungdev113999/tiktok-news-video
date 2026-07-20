@@ -44,7 +44,12 @@ video_1.mp4
 ```
 
 `(30%)` is that asset's share of the screen's duration; absent means an even
-split. Tags override the automatic aspect-ratio classification for that one
+split — and usually you should cut where the narration says so instead of
+using `%` at all.
+
+Some assets come with a **description image** beside them (`anh_2_des.jpg`) —
+the same photo with numbered markers, so the author can say "số 1" instead of
+counting people. Those files are never rendered; they exist only to be read. Tags override the automatic aspect-ratio classification for that one
 asset — absent tag is never an error.
 
 Read `tags/README.md` for the grammar and the table of implemented keys, then

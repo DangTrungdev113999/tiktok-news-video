@@ -262,6 +262,27 @@ function resolveShareFractions(assets) {
   return shares.map((v) => v / total);
 }
 
+/**
+ * Convert a focus cue given in absolute audio seconds (`peakSec` -- the moment
+ * the narration says the subject's name) into the shot-local frame the
+ * renderer wants, and drop `peakSec` so only render-ready numbers ship.
+ *
+ * A peak needs run-up: the push has to be visibly travelling before it lands.
+ * If the cue falls at or before the shot's own start (the cut happened too
+ * late, or on the very word), the peak is nudged in to MIN_PEAK_LEAD_FRAMES so
+ * there is still a move to see rather than a still frame that never animates.
+ * A cue past the end of the shot just peaks at the end.
+ */
+const MIN_PEAK_LEAD_FRAMES = 6;
+
+function resolveFocusPeak(focus, startFrame, durationInFrames) {
+  const { peakSec, ...rest } = focus;
+  if (typeof peakSec !== 'number') return rest;
+  const lastFrame = Math.max(durationInFrames - 1, 1);
+  const local = Math.round(peakSec * FPS) - startFrame;
+  return { ...rest, peakFrame: Math.min(Math.max(local, MIN_PEAK_LEAD_FRAMES), lastFrame) };
+}
+
 /** Shortest shot worth cutting to. Below this the cut reads as a glitch. */
 const MIN_SHOT_SEC = 0.5;
 
@@ -421,7 +442,7 @@ export async function buildSpec({ scenes, workspaceDir, narrationAudioPath, bgmA
       fit,
       assetWidth: probe.width,
       assetHeight: probe.height,
-      ...(scene.focus ? { focus: scene.focus } : {}),
+      ...(scene.focus ? { focus: resolveFocusPeak(scene.focus, startFrame, durationInFrames) } : {}),
       startFrame,
       durationInFrames,
       ...(scene.isHook ? { isHook: true, hookHeadline: scene.hookHeadline } : {}),

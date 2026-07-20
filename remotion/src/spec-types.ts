@@ -37,8 +37,15 @@ export interface FocusPoint {
   x: number;
   /** 0 = top edge, 1 = bottom edge of the visible image. */
   y: number;
-  /** Zoom factor at the end of the push. ~1.15 loose, ~1.6 tight. */
+  /** Zoom factor at the peak of the push. ~1.15 loose, ~1.6 tight. */
   scale: number;
+  /**
+   * Frame WITHIN THIS SHOT at which the push reaches `scale`, then holds.
+   * Set when the author tied the focus to a spoken moment ('luc "Trung Dang"'):
+   * the move lands exactly as the name is said. Omit to peak at the last frame
+   * of the shot.
+   */
+  peakFrame?: number;
   /**
    * Why these numbers -- the line the skill reported in chat, e.g.
    * 'nguoi thu 3 tu trai -> ao vest xanh'. Never read by the renderer; it
