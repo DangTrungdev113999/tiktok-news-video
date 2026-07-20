@@ -127,6 +127,20 @@ const FOCUS_EASING = Easing.bezier(0.4, 0, 0.2, 1);
 const TRANSIT_RELIEF_DISTANCE = 0.18;
 const TRANSIT_RELIEF_SCALE = 0.82;
 
+// Before the cue word arrives, the shot should already be MOVING -- drifting
+// laterally toward the subject rather than sitting still and slowly growing.
+// The approach starts this far to one side of the target, on the centre-ward
+// side so the start point is always inside the picture: a subject on the left
+// is approached from the right and vice versa.
+const FOCUS_APPROACH_DISTANCE = 0.16;
+// The opening needs a little scale or there is no crop overflow to drift
+// across at all -- at scale 1 a blur-padded picture is smaller than the frame
+// and the translate clamps to zero, so the approach would be invisible.
+const FOCUS_APPROACH_SCALE = 1.1;
+// Hard ceiling on an aimed push. Past this the arrival reads as a lunge rather
+// than a camera settling, and on a phone the source pixels start to show.
+const FOCUS_SCALE_MAX = 1.5;
+
 // Safety factor applied to the theoretical max crop overflow before letting
 // translate use it (leaves a little margin for rounding/anti-aliasing).
 const OVERFLOW_SAFETY = 0.85;
@@ -213,7 +227,12 @@ function computeFocusTransform(
       extrapolateRight: "clamp",
       easing: FOCUS_EASING,
     } as const;
-    const scale = interpolate(frame, [0, endFrame], [Math.max(t.scale, 1), 1], ramp);
+    const scale = interpolate(
+      frame,
+      [0, endFrame],
+      [Math.min(Math.max(t.scale, 1), FOCUS_SCALE_MAX), 1],
+      ramp,
+    );
     const clampBack = (desiredPx: number, painted: number, frameExtent: number) => {
       const movable = Math.min(painted, frameExtent);
       const maxPx = (Math.max(movable * scale - frameExtent, 0) / 2) * OVERFLOW_SAFETY;
@@ -224,8 +243,18 @@ function computeFocusTransform(
     return `translate(${bx}px, ${by}px) scale(${scale})`;
   }
 
+  // Approach the first subject from the side, so the run-up to the cue is a
+  // lateral drift and not a static frame that merely grows. Which side is
+  // decided by where the subject sits: centre-ward, so the starting aim is
+  // always a real point inside the picture.
+  const approachSign = focus[0].x <= 0.5 ? 1 : -1;
   const stops: Array<{ f: number; x: number; y: number; s: number }> = [
-    { f: 0, x: focus[0].x, y: focus[0].y, s: 1 },
+    {
+      f: 0,
+      x: Math.min(Math.max(focus[0].x + approachSign * FOCUS_APPROACH_DISTANCE, 0), 1),
+      y: focus[0].y,
+      s: FOCUS_APPROACH_SCALE,
+    },
   ];
 
   focus.forEach((t, i) => {
@@ -246,7 +275,7 @@ function computeFocusTransform(
       });
     }
 
-    stops.push({ f, x: t.x, y: t.y, s: Math.max(t.scale, 1) });
+    stops.push({ f, x: t.x, y: t.y, s: Math.min(Math.max(t.scale, 1), FOCUS_SCALE_MAX) });
   });
 
   // interpolate() requires a strictly increasing input range; cues that land
