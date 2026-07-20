@@ -414,8 +414,30 @@ function resolveSlideTag(slide, probe, filename, warnings) {
   const startInset = slide.startInset ?? 0;
   const endInset = slide.endInset ?? 0;
 
-  let from = leftToRight ? startInset : 1 - startInset;
-  let to = leftToRight ? 1 - endInset : endInset;
+  const anchorY = typeof slide.anchorY === 'number' ? slide.anchorY : undefined;
+  const anchorScale = anchorY !== undefined ? slideAnchorScale(anchorY) : undefined;
+
+  const coverScale = Math.max(WIDTH / probe.width, HEIGHT / probe.height);
+  const paintedW = probe.width * coverScale * (anchorScale ?? 1);
+
+  // `from`/`to` index the TRAVERSABLE RANGE (0 = the frame's leading edge on
+  // the picture's leading edge, 1 = trailing on trailing), but the author's
+  // inset is a fraction of the PICTURE. Those differ by exactly the width of
+  // the frame: only `paintedW - WIDTH` of the picture is ever traversed, so a
+  // raw 0.2 would put the frame edge at 0.2 x (1 - WIDTH/paintedW) of the
+  // image -- ~16% on a 3:1 panorama, ~14% on a 16:9 photo, always short of
+  // what "start 20% in from the left" says. Converting here keeps the tag
+  // honest and keeps the conversion where the dimensions are.
+  //
+  // (During an anchored slide's opening push the zoom is still ramping, so the
+  // mapping is exact only once it settles -- a fraction of a second, and the
+  // alternative is a scale-dependent position the author cannot predict.)
+  const traversable = 1 - WIDTH / paintedW;
+  const toRange = (inset) =>
+    traversable > 0 ? Math.min(Math.max(inset / traversable, 0), 1) : 0;
+
+  let from = leftToRight ? toRange(startInset) : 1 - toRange(startInset);
+  let to = leftToRight ? 1 - toRange(endInset) : toRange(endInset);
 
   if (Math.abs(to - from) < SLIDE_MIN_TRAVEL) {
     warnings.push(
@@ -426,14 +448,10 @@ function resolveSlideTag(slide, probe, filename, warnings) {
     to = leftToRight ? 1 : 0;
   }
 
-  const anchorY = typeof slide.anchorY === 'number' ? slide.anchorY : undefined;
-  const anchorScale = anchorY !== undefined ? slideAnchorScale(anchorY) : undefined;
-
   // A slide needs horizontal crop overflow to travel across. Cover-fitting a
   // PORTRAIT image into 1080x1920 binds on width, so there is none -- the tag
   // silently produces a still frame unless an anchor's zoom creates some.
-  const coverScale = Math.max(WIDTH / probe.width, HEIGHT / probe.height);
-  const overflowPx = probe.width * coverScale * (anchorScale ?? 1) - WIDTH;
+  const overflowPx = paintedW - WIDTH;
   if (overflowPx < SLIDE_MIN_OVERFLOW_PX) {
     warnings.push(
       `${filename} is ${probe.width}x${probe.height} -- once it fills a 1080x1920 frame there is ` +
