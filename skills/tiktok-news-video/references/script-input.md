@@ -23,12 +23,21 @@ names it in the script, treat that name exactly like any other
 Also ask (once, if not already clear from the message): does the user have a
 ready MP3 narration file, or should TTS generate it?
 
-### Per-scene motion tokens
+### Per-asset tags
 
-Optional keyword tokens may follow the filename to override the automatic
-aspect-ratio classification for that one scene. When no token is present the
-scene falls back to automatic classification — an absent token is never an
-error. See `motion.md` for the token grammar and what each one forces.
+A filename may be followed by `|`-separated **tags** that override the
+automatic aspect-ratio classification for that one asset, and by a `(30%)`
+duration share. When no tag is present the asset falls back to automatic
+classification — an absent tag is never an error.
+
+```
+anh_1.jpg (30%) | focus_object: nguoi thu 1 luc "su bin hoang son"
+anh_2.jpg
+```
+
+Read `tags/README.md` for the grammar and the table of implemented keys, then
+open the reference file for each key you actually meet. A key that is not in
+that table is **reported to the user, not guessed at**.
 
 ## Step 2 — Script rewrite (house style)
 

@@ -27,23 +27,21 @@ back get push then pull, and a landscape between them doesn't disturb that
 sequence. `build-spec.mjs`'s `occurrence` counters already do this; don't
 re-implement it.
 
-## Per-scene overrides
+## Per-asset overrides — tags
 
-Optional tokens in the scene script (see `script-input.md`) force a specific
-effect or fit for one scene instead of letting aspect ratio decide.
+Optional **tags** after a filename force a specific effect, fit, or focus for
+one asset instead of letting aspect ratio decide. The grammar and the list of
+implemented keys live in `tags/README.md`; each key has its own reference file
+that you open when you meet that key.
 
-> **Status: not yet implemented.** The token grammar is being designed. Until
-> it ships, every scene uses automatic classification and any token in the
-> input should be ignored with a note to the user rather than silently
-> dropped.
+Invariants every tag holds:
 
-When implementing, keep these invariants:
-
-- **Absent token = automatic.** Never require a token; the pipeline must stay
+- **Absent tag = automatic.** Never require a tag; the pipeline must stay
   usable by an employee who types only filenames.
-- **Deterministic only.** Every per-image intent comes from input tokens, never
-  from runtime image analysis. This project has no vision-based detection and
-  the render must stay a pure function of `spec.json`.
+- **The render is deterministic.** `spec.json` holds only numbers, and Remotion
+  is a pure function of it. A tag may be resolved by *looking at the image at
+  build time* (that is exactly what `focus_object` does) as long as what lands
+  in `spec.json` is the resolved number, not the instruction to go look.
 - **Overrides feed `classifyAsset`, not `Scene.tsx`.** The Remotion side stays
   one parametric component; an override changes which parameters it receives,
   never adds a bespoke code path.

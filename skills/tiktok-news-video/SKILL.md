@@ -19,7 +19,8 @@ one for the step you're on rather than reading them all up front.
 | `references/paths-and-config.md` | CODE vs WORKSPACE dirs, config file, where the house rules live |
 | `references/script-input.md` | Steps 1–3: parse the scene script, rewrite it, get approval |
 | `references/narration-and-bgm.md` | Steps 4–5: TTS or forced alignment, BGM choice |
-| `references/motion.md` | Which movement each asset gets, and per-scene overrides |
+| `references/motion.md` | Which movement each asset gets, and per-asset overrides |
+| `references/tags/README.md` | The tag grammar; one file per tag key, opened on demand |
 | `references/hook-and-brand.md` | The hook scene and resolving which brand kit to use |
 | `references/text-layout.md` | Typography, TikTok safe zone, karaoke captions |
 | `references/build-and-render.md` | Steps 6–8: build `spec.json`, render, report |
