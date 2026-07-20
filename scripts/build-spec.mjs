@@ -262,6 +262,55 @@ function resolveShareFractions(assets) {
   return shares.map((v) => v / total);
 }
 
+/** Shortest shot worth cutting to. Below this the cut reads as a glitch. */
+const MIN_SHOT_SEC = 0.5;
+
+/**
+ * Turn per-asset `startSec` pins into shot boundaries.
+ *
+ * This is the path that matters in practice. Authors rarely type `(30%)` --
+ * they expect the image to change when the narration reaches what that image
+ * shows. The skill resolves that at build time: narration is verbatim and
+ * word-level timed, so it knows the second at which a name or subject is
+ * spoken, and pins the asset there. Only numbers reach this function.
+ *
+ * The first asset always starts with the screen. Unpinned assets in between
+ * spread evenly across the gap between their pinned neighbours. Pins are
+ * clamped so shots stay in order and none falls below MIN_SHOT_SEC; if the
+ * screen is too short to honour them at all, returns null so the caller falls
+ * back to an even split.
+ *
+ * @returns {number[]|null} n+1 boundaries (b[0] = screen start, b[n] = screen end)
+ */
+function resolveShotBoundaries(screen, assets) {
+  const n = assets.length;
+  const pins = assets.map((a, i) =>
+    i > 0 && typeof a.startSec === 'number' ? a.startSec : null
+  );
+  if (pins.every((v) => v === null)) return null;
+
+  const b = [screen.startSec, ...pins.slice(1), screen.endSec];
+
+  // Spread each run of unpinned boundaries evenly between its known neighbours.
+  for (let i = 1; i < n; i += 1) {
+    if (b[i] !== null) continue;
+    let hi = i;
+    while (b[hi] === null) hi += 1;
+    const span = (b[hi] - b[i - 1]) / (hi - i + 1);
+    for (let k = i; k < hi; k += 1) b[k] = b[k - 1] + span;
+  }
+
+  // Push forward, then pull back, so boundaries end up strictly increasing
+  // with room for a real shot on both sides of every cut.
+  for (let i = 1; i <= n; i += 1) b[i] = Math.max(b[i], b[i - 1] + MIN_SHOT_SEC);
+  if (b[n] > screen.endSec) return null; // screen too short to honour the pins
+  b[n] = screen.endSec;
+  for (let i = n - 1; i >= 1; i -= 1) b[i] = Math.min(b[i], b[i + 1] - MIN_SHOT_SEC);
+  if (b[1] <= b[0]) return null;
+
+  return b;
+}
+
 /**
  * Flatten one screen (which may hold several images/videos) into one SHOT per
  * asset, each with its own time window. Everything downstream -- motion
@@ -290,19 +339,28 @@ function expandScreensIntoShots(screens) {
   const shots = [];
   for (const screen of screens) {
     const assets = normalizeAssets(screen);
-    const fractions = resolveShareFractions(assets);
-    const span = screen.endSec - screen.startSec;
-    let cursor = screen.startSec;
+
+    // Cut points come from the narration when the skill pinned them there,
+    // otherwise from `(30%)` shares, otherwise an even split.
+    let boundaries = resolveShotBoundaries(screen, assets);
+    if (!boundaries) {
+      const fractions = resolveShareFractions(assets);
+      boundaries = [screen.startSec];
+      let cursor = screen.startSec;
+      const span = screen.endSec - screen.startSec;
+      fractions.forEach((f, i) => {
+        cursor = i === fractions.length - 1 ? screen.endSec : cursor + span * f;
+        boundaries.push(cursor);
+      });
+    }
 
     assets.forEach((asset, i) => {
-      const startSec = cursor;
-      cursor = i === assets.length - 1 ? screen.endSec : startSec + span * fractions[i];
       const { assets: _assets, assetFilename: _assetFilename, words, ...rest } = screen;
       shots.push({
         ...rest,
         assetFilename: asset.filename,
-        startSec,
-        endSec: cursor,
+        startSec: boundaries[i],
+        endSec: boundaries[i + 1],
         ...(i === 0 && words ? { words } : {}),
       });
     });

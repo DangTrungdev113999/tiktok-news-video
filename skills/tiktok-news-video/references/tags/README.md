@@ -38,9 +38,31 @@ anh_2.jpg (70%) | focus_object: nhân vật đeo mặt nạ
 video_1.mp4
 ```
 
-`(30%)` is **that asset's share of the screen's duration**. The screen's total
-length is still set by the narration for that screen; `%` only decides how it
-is divided.
+### Cut where the narration says so — this is the normal case
+
+**Authors rarely type `%`, and they shouldn't have to.** They expect the image
+to change when the voice reaches what that image shows. You have everything
+needed to do that: narration is the user's text **verbatim** (no rewrite pass
+can remove the words a tag points at) and Step 2 gives you **word-level
+timing**.
+
+So when a screen holds several assets, work out from the narration *when* each
+one becomes the thing being talked about, and pin it there — pass
+`assets[].startSec` to `buildSpec`. A `focus_object` description naming a
+person is the strongest signal: cut to that image on the word that names them.
+
+Judge it like an editor, not a stopwatch: cut a beat *before* the name lands
+rather than after, and don't cut so often it flickers. `buildSpec` enforces a
+0.5s floor per shot and falls back to an even split if the pins can't fit.
+
+Say what you chose in the Step 6 report — which asset, which moment, which
+word.
+
+### `(30%)` — when the author does want to say it
+
+`(30%)` is **that asset's share of the screen's duration**. It's the fallback
+when nothing in the narration marks a natural cut. The screen's total length is
+still set by the narration for that screen; `%` only decides how it is divided.
 
 | Case | Result |
 |---|---|
