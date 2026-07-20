@@ -42,6 +42,14 @@ It resolves `assets/<filename>` against that workspace, chunks `words[]`
 into karaoke caption groups, applies the motion classification, and returns
 the full `spec.json` shape Remotion expects.
 
+### `spec.warnings`
+
+`buildSpec` returns a `warnings[]` on the spec for problems that still produce
+a video, but not the video the author asked for — a focus cue clamped because
+it fell outside its shot, shares that had to be normalised. **Report all of
+them in the Step 6 report.** They exist because the alternative is failing
+silently in a way that looks identical to success.
+
 `buildSpec` refuses to build if any asset fails to probe — it throws listing
 every missing file rather than rendering a partially-broken video.
 
@@ -90,3 +98,6 @@ Tell the user:
   (`$WORKSPACE_DIR/output/<dated-slug>/final.mp4`)
 - the video's duration
 - a one-line summary of what effects / BGM / voice / brand were used
+- **every entry in `spec.warnings`**, plus what you resolved each
+  `focus_object` to (which person, which coordinates, which cue word) — the
+  author is the only one who can catch a misidentification

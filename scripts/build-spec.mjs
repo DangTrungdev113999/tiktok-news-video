@@ -242,7 +242,7 @@ function normalizeAssets(screen) {
  * everything down together. The result is always renderable; the skill is
  * responsible for telling the user their numbers were adjusted.
  */
-function resolveShareFractions(assets) {
+function resolveShareFractions(assets, warnings = []) {
   const n = assets.length;
   const given = assets.map((a) => (typeof a.share === 'number' && a.share > 0 ? a.share : null));
   const untaggedCount = given.filter((v) => v === null).length;
@@ -259,6 +259,12 @@ function resolveShareFractions(assets) {
   }
 
   const total = shares.reduce((sum, v) => sum + v, 0);
+  if (untaggedCount < n && Math.abs(total - 100) > 0.01) {
+    warnings.push(
+      `shares on this screen total ${total}%, not 100% -- divided proportionally instead ` +
+      `(${assets.map((a, i) => `${a.filename} ${(shares[i] / total * 100).toFixed(0)}%`).join(', ')})`
+    );
+  }
   return shares.map((v) => v / total);
 }
 
@@ -268,19 +274,39 @@ function resolveShareFractions(assets) {
  * renderer wants, and drop `peakSec` so only render-ready numbers ship.
  *
  * A peak needs run-up: the push has to be visibly travelling before it lands.
- * If the cue falls at or before the shot's own start (the cut happened too
- * late, or on the very word), the peak is nudged in to MIN_PEAK_LEAD_FRAMES so
- * there is still a move to see rather than a still frame that never animates.
- * A cue past the end of the shot just peaks at the end.
+ * If the cue falls at or before the shot's own start, the peak is nudged in to
+ * MIN_PEAK_LEAD_FRAMES so there is still a move to see rather than a still
+ * frame that never animates. A cue past the end of the shot peaks at the end.
+ *
+ * BOTH of those are clamps over a cue that landed OUTSIDE its own shot, which
+ * means the zoom no longer peaks on the word it was aimed at -- the one thing
+ * this cue exists to do. The cut (`assets[].startSec`) and the peak
+ * (`focus.peakSec`) are set independently by the skill, so they can disagree.
+ * Clamping silently would hide exactly the failure the author would want to
+ * know about, so every clamp is reported.
  */
 const MIN_PEAK_LEAD_FRAMES = 6;
 
-function resolveFocusPeak(focus, startFrame, durationInFrames) {
+function resolveFocusPeak(focus, startFrame, durationInFrames, filename, warnings) {
   const { peakSec, ...rest } = focus;
   if (typeof peakSec !== 'number') return rest;
+
   const lastFrame = Math.max(durationInFrames - 1, 1);
   const local = Math.round(peakSec * FPS) - startFrame;
-  return { ...rest, peakFrame: Math.min(Math.max(local, MIN_PEAK_LEAD_FRAMES), lastFrame) };
+  const peakFrame = Math.min(Math.max(local, MIN_PEAK_LEAD_FRAMES), lastFrame);
+
+  if (local < MIN_PEAK_LEAD_FRAMES) {
+    warnings.push(
+      `${filename}: the focus cue at ${peakSec.toFixed(2)}s lands ${((startFrame - Math.round(peakSec * FPS)) / FPS).toFixed(2)}s ` +
+      `BEFORE this shot starts, so the zoom cannot peak on it -- cut to this asset earlier.`
+    );
+  } else if (local > lastFrame) {
+    warnings.push(
+      `${filename}: the focus cue at ${peakSec.toFixed(2)}s lands after this shot ends, ` +
+      `so the zoom peaks at the cut instead -- give this asset more of the screen.`
+    );
+  }
+  return { ...rest, peakFrame };
 }
 
 /** Shortest shot worth cutting to. Below this the cut reads as a glitch. */
@@ -356,7 +382,7 @@ function resolveShotBoundaries(screen, assets) {
  * and the remount is invisible. Without this, a 2-asset hook screen would
  * drop the brand badge halfway through.
  */
-function expandScreensIntoShots(screens) {
+function expandScreensIntoShots(screens, warnings = []) {
   const shots = [];
   for (const screen of screens) {
     const assets = normalizeAssets(screen);
@@ -365,7 +391,7 @@ function expandScreensIntoShots(screens) {
     // otherwise from `(30%)` shares, otherwise an even split.
     let boundaries = resolveShotBoundaries(screen, assets);
     if (!boundaries) {
-      const fractions = resolveShareFractions(assets);
+      const fractions = resolveShareFractions(assets, warnings);
       boundaries = [screen.startSec];
       let cursor = screen.startSec;
       const span = screen.endSec - screen.startSec;
@@ -394,9 +420,14 @@ export async function buildSpec({ scenes, workspaceDir, narrationAudioPath, bgmA
   if (!Array.isArray(scenes) || scenes.length === 0) {
     throw new Error('buildSpec requires a non-empty scenes[] array');
   }
+  // Non-fatal problems the SKILL must report to the user. Never read by the
+  // renderer -- these are things that still produce a video, but not the video
+  // the author asked for.
+  const warnings = [];
+
   // Screens in -> shots out. One screen may hold several assets; everything
   // below this line works one asset at a time.
-  scenes = closeTimingGaps(expandScreensIntoShots(scenes));
+  scenes = closeTimingGaps(expandScreensIntoShots(scenes, warnings));
 
   const occurrence = { landscape: 0, portrait: 0, square: 0 };
   const sceneSpecs = [];
@@ -442,7 +473,9 @@ export async function buildSpec({ scenes, workspaceDir, narrationAudioPath, bgmA
       fit,
       assetWidth: probe.width,
       assetHeight: probe.height,
-      ...(scene.focus ? { focus: resolveFocusPeak(scene.focus, startFrame, durationInFrames) } : {}),
+      ...(scene.focus
+        ? { focus: resolveFocusPeak(scene.focus, startFrame, durationInFrames, scene.assetFilename, warnings) }
+        : {}),
       startFrame,
       durationInFrames,
       ...(scene.isHook ? { isHook: true, hookHeadline: scene.hookHeadline } : {}),
@@ -475,6 +508,7 @@ export async function buildSpec({ scenes, workspaceDir, narrationAudioPath, bgmA
     spec.bgmVolume = bgmVolume ?? DEFAULT_BGM_VOLUME;
   }
   if (captionLines.length > 0) spec.captions = captionLines;
+  if (warnings.length > 0) spec.warnings = warnings;
   if (sceneSpecs.some((s) => s.isHook)) {
     if (!brandKit) {
       throw new Error('buildSpec: a scene has isHook: true but no brandKit was provided (resolve one via scripts/brand-kit.mjs first).');

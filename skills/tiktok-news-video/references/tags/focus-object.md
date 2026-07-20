@@ -97,18 +97,38 @@ For each asset carrying `focus_object`:
    The author is the only one who can catch a misidentification, and they can
    only catch it if you tell them what you picked.
 
-## What lands in `spec.json`
+## The two shapes — what you pass vs what ships
+
+**What you pass to `buildSpec`** — timing in absolute audio seconds, because
+that's what Step 2 gives you:
 
 ```json
 "focus": { "x": 0.75, "y": 0.31, "scale": 1.35, "peakSec": 7.0, "note": "nguoi ao vest hong ben phai" }
 ```
 
+**What lands in `spec.json`** — `buildSpec` converts the cue to a shot-local
+frame and drops `peakSec`, so the renderer only ever sees render-ready numbers:
+
+```json
+"focus": { "x": 0.75, "y": 0.31, "scale": 1.35, "peakFrame": 30, "note": "nguoi ao vest hong ben phai" }
+```
+
 `x`/`y` are normalised **against the picture itself**, not against the
 1080×1920 frame — the renderer converts, differently for cover and for
-blur-pad. `buildSpec` turns `peakSec` into a shot-local `peakFrame` and drops
-`peakSec`, so only render-ready numbers ship. `note` is never read by the
-renderer; it exists so a saved `spec.json` still explains *why* the numbers
-are what they are, months later.
+blur-pad. `note` is never read by the renderer; it exists so a saved
+`spec.json` still explains *why* the numbers are what they are, months later.
+
+### Check `spec.warnings` before you render
+
+The cut (`assets[].startSec`) and the peak (`focus.peakSec`) are two things
+**you** set independently, so they can disagree — pin the cut at 7.5s for a
+name spoken at 7.0s and the zoom cannot possibly peak on it. `buildSpec`
+clamps the cue into the shot so the render still works, and puts a line in
+`spec.warnings` saying which asset and by how much.
+
+**Report every one of those to the user in the Step 6 report.** A silently
+clamped cue looks exactly like a cue that worked, and it defeats the only
+thing `lúc "..."` exists to do.
 
 ## How it changes the motion
 
