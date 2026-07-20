@@ -40,9 +40,9 @@ For each asset carrying `focus_object`:
    centre, not by where their limbs reach.
 3. **Write down the focus point** as normalised coordinates of the subject's
    visual anchor — for a person, the **face**, not the body centroid:
-   - `focusX`: 0 = left edge, 1 = right edge
-   - `focusY`: 0 = top edge, 1 = bottom edge
-4. **Choose how tight to go.** `focusScale` is the zoom factor at the peak of
+   - `x`: 0 = left edge, 1 = right edge
+   - `y`: 0 = top edge, 1 = bottom edge
+4. **Choose how tight to go.** `scale` is the zoom factor at the peak of
    the move — roughly 1.15 for a single large subject, 1.35 for one person in
    a group, up to 1.6 for one face in a crowd. Never above 1.8: past that the
    source pixels show.
@@ -55,21 +55,21 @@ For each asset carrying `focus_object`:
 
 The tag resolves into plain numbers on the asset:
 
-| Field | Meaning |
-|---|---|
-| `focusX`, `focusY` | 0–1 normalised focus point → `transform-origin` |
-| `focusScale` | zoom factor at the peak |
-| `focusNote` | the human-readable line you reported in chat |
+```json
+"focus": { "x": 0.38, "y": 0.31, "scale": 1.35, "note": "nhan vat deo mat na, thu 2 tu trai" }
+```
 
-`focusNote` is not read by the renderer. It exists so that the saved
-`spec.json` explains *why* the numbers are what they are, months later.
+`x`/`y` are normalised **against the picture itself**, not against the
+1080×1920 frame — the renderer converts, differently for cover and for
+blur-pad. `note` is never read by the renderer; it exists so a saved
+`spec.json` still explains *why* the numbers are what they are, months later.
 
 ## How it changes the motion
 
-The tag's contract is only: **the described thing ends up large and centred in
-frame.** Which movement gets it there is your call — push in on it, hold it
-steady while the rest drifts, settle onto it off a wider start. Vary it so a
-video with several focused assets doesn't feel mechanical.
+The tag's contract is only: **the described thing ends up large and as centred
+as the picture allows.** How tight and how fast is your call — `focus.scale`
+is the dial, and varying it keeps a video with several focused assets from
+feeling mechanical.
 
 What it must not do is add a bespoke rendering path. Per the house rule in
 `motion.md`, a tag changes which parameters `Scene.tsx` receives. If a genuinely
@@ -77,11 +77,23 @@ new movement is wanted, it becomes a named effect in
 `knowledge/effect-catalog.md` plus a branch in `computeTransform` — available
 to every asset, not just this tag.
 
-**This is real `Scene.tsx` work, not a free parameter pass.** As of 2026-07-20
-`computeTransform` hardcodes `transform-origin: center center` (four call
-sites) and the `zoom` branch always runs the fixed `ZOOM_END` constant across
-the whole window. Shipping this key means widening that branch to take an
-origin and a target scale.
+### What the renderer actually does with it
+
+`computeFocusTransform` in `Scene.tsx` pushes from scale 1 to `focus.scale`
+and **translates** the picture so the focus point travels toward the centre of
+frame.
+
+Not `transform-origin`: scaling *about* the focus point only makes the subject
+bigger where they already stand — someone at the left edge stays at the left
+edge. Moving the subject to the middle means moving the image.
+
+**Full centring is usually impossible, and that's expected.** Bringing a face
+at x=0.1 to dead centre would need roughly scale 5 before the picture is wide
+enough to allow the shift. The translate is therefore clamped to what the
+image can give, so an edge subject ends up large and *closer* to centre, never
+dead centre — and never with a blurred sliver or black band creeping in. If
+you need a subject tighter, raise `focus.scale`; don't expect the framing to
+obey beyond what the pixels allow.
 
 The alternation counter for the `zoom` class **skips** an asset that carries
 this tag — a forced, aimed move must not flip the next portrait's turn.
@@ -90,13 +102,26 @@ this tag — a forced, aimed move must not flip the next portrait's turn.
 
 `focus_object` decides where the camera looks. It says nothing about whether
 the frame is edge-to-edge or blur-padded — that is a separate tag's job. Both
-may appear on the same asset. If the asset is blur-padded, the focus point is
-normalised against the **visible image**, not the padded 1080×1920 frame.
+may appear on the same asset.
+
+You do not have to adjust `x`/`y` for the fit. They are always normalised
+against the picture, and `Scene.tsx` works out the painted size for whichever
+layout applies (cover-scaled, or contain-scaled inside its blur bands). This
+matters: measuring against the 1080×1920 frame instead would make a
+blur-padded shot aim past its subject by the height of the bands.
+
+## Parsing
+
+`scripts/parse-tags.mjs` splits the line into `{filename, share, tags}`. It
+deliberately does NOT resolve `focus_object` — turning a description into
+coordinates needs a look at the image, which is yours to do. The parser only
+reports what the author wrote, and returns any unregistered key in
+`unknownKeys` so it gets surfaced instead of silently dropped.
 
 ## Failure rule
 
 If you genuinely cannot find what the description names — the person isn't
 there, the description is ambiguous between two subjects — **do not guess a
-coordinate**. Fall back to centre (0.5, 0.5) with `focusScale: 1.15`, and tell
+coordinate**. Fall back to centre (0.5, 0.5) with `scale: 1.15`, and tell
 the user plainly which asset and which description failed. A wrong focus point
 is worse than no focus point: it zooms confidently into the wrong face.

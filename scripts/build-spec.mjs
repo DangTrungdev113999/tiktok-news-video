@@ -359,6 +359,7 @@ function expandScreensIntoShots(screens) {
       shots.push({
         ...rest,
         assetFilename: asset.filename,
+        ...(asset.focus ? { focus: asset.focus } : {}),
         startSec: boundaries[i],
         endSec: boundaries[i + 1],
         ...(i === 0 && words ? { words } : {}),
@@ -393,9 +394,12 @@ export async function buildSpec({ scenes, workspaceDir, narrationAudioPath, bgmA
 
     // Snapshot the 0-based occurrence index for this scene's class BEFORE
     // bumping the counter, so the first occurrence of each class starts its
-    // alternation at index 0 (left/in/diagonal).
+    // alternation at index 0 (left/in/diagonal). A focused shot doesn't take
+    // its turn in the rotation at all -- its movement is aimed, not chosen by
+    // aspect ratio, so letting it bump the counter would flip the next
+    // portrait's push/pull for no visible reason.
     const occurrenceForThisScene = { ...occurrence };
-    if (probe.type === 'image') {
+    if (probe.type === 'image' && !scene.focus) {
       const ratioWH = probe.width / probe.height;
       if (ratioWH >= LANDSCAPE_RATIO) occurrence.landscape += 1;
       else if (ratioWH <= 1 / PORTRAIT_RATIO) occurrence.portrait += 1;
@@ -417,6 +421,7 @@ export async function buildSpec({ scenes, workspaceDir, narrationAudioPath, bgmA
       fit,
       assetWidth: probe.width,
       assetHeight: probe.height,
+      ...(scene.focus ? { focus: scene.focus } : {}),
       startFrame,
       durationInFrames,
       ...(scene.isHook ? { isHook: true, hookHeadline: scene.hookHeadline } : {}),

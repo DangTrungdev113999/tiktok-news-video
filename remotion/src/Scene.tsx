@@ -2,7 +2,7 @@ import React from "react";
 import type { CSSProperties } from "react";
 import { AbsoluteFill, Easing, Img, interpolate, staticFile, useCurrentFrame, useVideoConfig } from "remotion";
 import { Video as MediaVideo } from "@remotion/media";
-import type { AssetType, Direction, Effect, Fit, ZoomVariant } from "./spec-types";
+import type { AssetType, Direction, Effect, Fit, FocusPoint, ZoomVariant } from "./spec-types";
 
 /**
  * ONE parametric scene component -- no bespoke-per-scene code.
@@ -22,6 +22,8 @@ export interface SceneProps {
   /** Asset's natural pixel dimensions -- required for "pan" to compute its true crop overflow (see PanMedia). */
   assetWidth?: number;
   assetHeight?: number;
+  /** From a `focus_object:` tag. When present it replaces the effect with an aimed push. */
+  focus?: FocusPoint;
   durationInFrames: number;
 }
 
@@ -81,6 +83,71 @@ const OVERFLOW_SAFETY = 0.85;
 function clampToAxisOverflow(desiredPx: number, scale: number, dimension: number): number {
   const overflowPx = Math.max(scale - 1, 0) * (dimension / 2) * OVERFLOW_SAFETY;
   return Math.max(Math.min(desiredPx, overflowPx), -overflowPx);
+}
+
+/**
+ * An aimed push toward a `focus_object` point, instead of the generic
+ * centre-out zoom.
+ *
+ * Why translate rather than `transform-origin`: scaling ABOUT the focus point
+ * only makes the subject bigger where they already are -- someone standing at
+ * the left edge stays at the left edge. To actually bring them to the middle
+ * of frame you have to move the image. So origin stays `center center` and
+ * the framing is done by translate:
+ *
+ *   a point at normalised position p lands at 0.5 + s*(p - 0.5) + t/size,
+ *   so t = -s*(p - 0.5)*size puts it dead centre.
+ *
+ * That ideal is usually unreachable, so the translate is clamped to what the
+ * picture can actually give on each axis: at most half of however much the
+ * drawn image overflows the frame at the current scale. The subject ends up
+ * large and as centred as the picture allows, and the image edge never drifts
+ * inside the frame.
+ *
+ * `drawnW`/`drawnH` are the size the image is actually PAINTED at, which is
+ * not the frame size and not the file's pixel size:
+ *   - cover      -> file dimensions x max(frameW/w, frameH/h)  (>= frame, one axis equal)
+ *   - blur-pad   -> file dimensions x min(frameW/w, frameH/h)  (<= frame, one axis equal)
+ * Using them for both the aim and the clamp is what makes one formula serve
+ * both layouts. focus.x/y are normalised against the picture, so they must be
+ * multiplied by the painted size -- against the frame size instead, a
+ * blur-padded shot aims past its subject by the letterbox margin, and the
+ * clamp lets the image edge slide into view (a blurred sliver down one side).
+ * An axis whose painted extent doesn't exceed the frame gets no translate at
+ * all, which is what keeps blur-pad's bands even.
+ *
+ * Starts at scale 1 so the shot establishes context before closing in, which
+ * is what makes the move read as deliberate rather than as a crop.
+ *
+ * Pure function of its arguments -- the vision that produced `focus` ran at
+ * BUILD time, not here.
+ */
+function computeFocusTransform(
+  focus: FocusPoint,
+  frame: number,
+  durationInFrames: number,
+  drawnW: number,
+  drawnH: number,
+  frameW: number,
+  frameH: number,
+): string {
+  const endFrame = Math.max(durationInFrames - 1, 1);
+  const targetScale = Math.max(focus.scale, 1);
+  const scale = interpolate(frame, [0, endFrame], [1, targetScale], {
+    extrapolateLeft: "clamp",
+    extrapolateRight: "clamp",
+    easing: MOTION_EASING,
+  });
+
+  const clampToPaintedOverflow = (desiredPx: number, painted: number, frameExtent: number) => {
+    const maxPx = (Math.max(painted * scale - frameExtent, 0) / 2) * OVERFLOW_SAFETY;
+    return Math.max(Math.min(desiredPx, maxPx), -maxPx);
+  };
+
+  const x = clampToPaintedOverflow(-scale * (focus.x - 0.5) * drawnW, drawnW, frameW);
+  const y = clampToPaintedOverflow(-scale * (focus.y - 0.5) * drawnH, drawnH, frameH);
+
+  return `translate(${x}px, ${y}px) scale(${scale})`;
 }
 
 /**
@@ -232,12 +299,14 @@ const CoverMedia: React.FC<{
   zoomVariant: ZoomVariant;
   assetWidth?: number;
   assetHeight?: number;
+  focus?: FocusPoint;
   durationInFrames: number;
-}> = ({ assetPath, assetType, effect, direction, zoomVariant, assetWidth, assetHeight, durationInFrames }) => {
+}> = ({ assetPath, assetType, effect, direction, zoomVariant, assetWidth, assetHeight, focus, durationInFrames }) => {
   const frame = useCurrentFrame();
   const { width, height } = useVideoConfig();
 
-  if (effect === "pan" && assetWidth && assetHeight) {
+  // An aimed push outranks the aspect-ratio-chosen effect, including pan.
+  if (!focus && effect === "pan" && assetWidth && assetHeight) {
     return (
       <PanMedia
         assetPath={assetPath}
@@ -252,7 +321,17 @@ const CoverMedia: React.FC<{
 
   // true: this media is object-fit: cover, so there is a real crop edge --
   // clamp translate to the overflow actually available.
-  const transform = computeTransform(effect, direction, zoomVariant, frame, durationInFrames, width, height, true);
+  // Painted size under object-fit: cover -- >= the frame on both axes, equal
+  // on one. Falls back to the frame itself when dimensions are unknown
+  // (video), which is the cover box minus the off-frame overflow.
+  const coverScale =
+    assetWidth && assetHeight ? Math.max(width / assetWidth, height / assetHeight) : 0;
+  const paintedW = coverScale ? assetWidth! * coverScale : width;
+  const paintedH = coverScale ? assetHeight! * coverScale : height;
+
+  const transform = focus
+    ? computeFocusTransform(focus, frame, durationInFrames, paintedW, paintedH, width, height)
+    : computeTransform(effect, direction, zoomVariant, frame, durationInFrames, width, height, true);
   const src = staticFile(assetPath);
 
   const style: CSSProperties = {
@@ -284,15 +363,27 @@ const ContainBlurPad: React.FC<{
   effect: Effect;
   direction: Direction;
   zoomVariant: ZoomVariant;
+  focus?: FocusPoint;
+  assetWidth?: number;
+  assetHeight?: number;
   durationInFrames: number;
-}> = ({ assetPath, assetType, effect, direction, zoomVariant, durationInFrames }) => {
+}> = ({ assetPath, assetType, effect, direction, zoomVariant, focus, assetWidth, assetHeight, durationInFrames }) => {
   const frame = useCurrentFrame();
   const { width, height } = useVideoConfig();
   // false: the foreground here is object-fit: contain over its own blurred
   // backdrop, so drift never exposes black -- only more backdrop. No clamp
   // needed.
-  const transform =
-    effect === "passthrough"
+  // Painted size under object-fit: contain -- <= the frame on both axes, so
+  // the letterbox bands this layout exists to produce are part of the
+  // geometry the focus math has to respect.
+  const containScale =
+    assetWidth && assetHeight ? Math.min(width / assetWidth, height / assetHeight) : 0;
+  const paintedW = containScale ? assetWidth! * containScale : width;
+  const paintedH = containScale ? assetHeight! * containScale : height;
+
+  const transform = focus
+    ? computeFocusTransform(focus, frame, durationInFrames, paintedW, paintedH, width, height)
+    : effect === "passthrough"
       ? "none"
       : computeTransform(effect, direction, zoomVariant, frame, durationInFrames, width, height, false);
   const src = staticFile(assetPath);
@@ -339,6 +430,7 @@ export const Scene: React.FC<SceneProps> = ({
   fit,
   assetWidth,
   assetHeight,
+  focus,
   durationInFrames,
 }) => {
   const resolvedDirection: Direction = direction ?? "left";
@@ -352,6 +444,9 @@ export const Scene: React.FC<SceneProps> = ({
         effect={effect}
         direction={resolvedDirection}
         zoomVariant={resolvedZoomVariant}
+        focus={focus}
+        assetWidth={assetWidth}
+        assetHeight={assetHeight}
         durationInFrames={durationInFrames}
       />
     );
@@ -366,6 +461,7 @@ export const Scene: React.FC<SceneProps> = ({
       zoomVariant={resolvedZoomVariant}
       assetWidth={assetWidth}
       assetHeight={assetHeight}
+      focus={focus}
       durationInFrames={durationInFrames}
     />
   );

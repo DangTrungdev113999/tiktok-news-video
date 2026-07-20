@@ -25,6 +25,28 @@ export type ZoomVariant = "in" | "out";
 
 export type Fit = "cover" | "contain-blur-pad";
 
+/**
+ * Where in the picture the camera should end up, resolved from a
+ * `focus_object:` tag. The skill LOOKS AT the image while building spec.json
+ * and writes these numbers down; the renderer only ever sees numbers, so the
+ * render stays a pure function of the spec. See
+ * skills/tiktok-news-video/references/tags/focus-object.md.
+ */
+export interface FocusPoint {
+  /** 0 = left edge, 1 = right edge of the visible image. */
+  x: number;
+  /** 0 = top edge, 1 = bottom edge of the visible image. */
+  y: number;
+  /** Zoom factor at the end of the push. ~1.15 loose, ~1.6 tight. */
+  scale: number;
+  /**
+   * Why these numbers -- the line the skill reported in chat, e.g.
+   * 'nguoi thu 3 tu trai -> ao vest xanh'. Never read by the renderer; it
+   * exists so a saved spec.json still explains itself months later.
+   */
+  note?: string;
+}
+
 export interface SceneSpec {
   /** Path relative to the repo root, e.g. "assets/hop-bao.jpg". */
   assetPath: string;
@@ -45,6 +67,12 @@ export interface SceneSpec {
    */
   assetWidth?: number;
   assetHeight?: number;
+  /**
+   * Present when the author tagged this asset with `focus_object:`. Overrides
+   * `effect`/`zoomVariant` -- the shot becomes an aimed push toward this point
+   * instead of whatever aspect ratio would have chosen.
+   */
+  focus?: FocusPoint;
   /** Absolute frame (at the composition's fps) this scene's Sequence starts at. */
   startFrame: number;
   /** How many frames this scene's Sequence lasts. */
