@@ -29,6 +29,11 @@ Vietnamese; most other keys take a fixed enum.
 
 ## Duration share
 
+> **Status: not yet implemented.** One scene currently holds exactly one
+> asset, so `(30%)` has nothing to divide. Everything in this section
+> describes the target state. Until it ships, report a `%` back to the user
+> as unsupported rather than ignoring it.
+
 `(30%)` after a filename claims that share of the scene's duration when the
 scene holds several assets. With no `%` on any asset, the scene's time splits
 evenly. `%` is a hint, not a command: if a tag pins the asset to a moment in

@@ -66,7 +66,17 @@ that phrase is spoken.
   narration for that scene.
 - The cue **outranks a `(30%)` share**: widen or shift the asset's window so it
   contains the cue frame, then re-split the remaining time among the other
-  assets. Report the adjustment.
+  assets. Report the adjustment. *(Only meaningful once a scene can hold
+  several assets — see `README.md`'s Duration share status. On today's
+  one-asset-per-scene model the window is the whole scene, so the cue only
+  moves the peak within it.)*
+
+### `luc` is a sub-token here, not a key
+
+`luc "..."` is written with quotes and no colon because it lives **inside**
+`focus_object`'s free-form value. It is deliberately *not* a registered key.
+If a future tag also needs timing, promote `luc:` to a standalone key at that
+point and migrate this one — don't let the two grammars coexist.
 
 ## What lands in `spec.json`
 
@@ -99,6 +109,14 @@ Concretely, versus an automatic zoom:
 
 The alternation counter for the `zoom` class **skips** an asset that carries
 this tag — a forced push must not flip the next portrait's turn.
+
+**This is real `Scene.tsx` work, not a free parameter pass.** As of 2026-07-20
+`computeTransform` hardcodes `transform-origin: center center` (four call
+sites) and always peaks at `endFrame` using the fixed `ZOOM_END` constant.
+Shipping this key means widening the `zoom` branch to take an origin, a target
+scale, and a peak frame. That stays inside the one-parametric-component rule —
+it widens the existing branch rather than adding a bespoke path — but budget
+for it.
 
 ## Interaction with `fill_full_screen`
 
