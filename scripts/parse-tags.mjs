@@ -38,7 +38,7 @@
 export const KNOWN_KEYS = new Set(['focus_object']);
 
 /** Bare flags -- tags written as the key alone, with no value. */
-export const KNOWN_FLAGS = new Set(['fill_full_screen']);
+export const KNOWN_FLAGS = new Set(['fill_full_screen', 'flip_book']);
 
 /**
  * Keys that are valid BOTH bare and with a value -- bare means "use the
@@ -51,21 +51,26 @@ export const KNOWN_OPTIONAL_KEYS = new Set([
   'zoom_out',
   'slide_left_right',
   'slide_right_left',
+  'slide_top_bottom',
 ]);
 
 /**
- * The keys that decide what the camera does. At most one may apply to an
- * asset; when an author writes several, the FIRST entry here wins and the rest
- * are reported. Ordered most-specific first -- an aimed move at a named
- * subject beats a survey of the whole picture, which beats a bare zoom.
+ * Tags do NOT all compete -- they fill SLOTS, and only same-slot tags conflict.
+ * `zoom_in 20% | slide_left_right` is a traverse that also closes in, which is
+ * a combination the author asked for, not a mistake.
+ *
+ *   fit       fill_full_screen
+ *   entrance  flip_book  (a slide gets one automatically when this is absent)
+ *   traverse  focus_object | slide_left_right | slide_right_left | slide_top_bottom
+ *   zoom      zoom_in | zoom_out
+ *
+ * Within a slot the FIRST listed key wins and the rest are reported -- an aimed
+ * move at a named subject beats a survey of the whole picture.
  */
-export const MOTION_KEYS = [
-  'focus_object',
-  'slide_left_right',
-  'slide_right_left',
-  'zoom_in',
-  'zoom_out',
-];
+export const TAG_SLOTS = {
+  traverse: ['focus_object', 'slide_left_right', 'slide_right_left', 'slide_top_bottom'],
+  zoom: ['zoom_in', 'zoom_out'],
+};
 
 const SHARE_RE = /\((\d+(?:\.\d+)?)\s*%\)/;
 
@@ -160,15 +165,21 @@ export function parseAssetLine(line) {
     tags[hit.key] = value;
   });
 
-  // Only one tag may own the camera. Reported rather than resolved here: this
-  // module says what the author wrote, and dropping a tag silently is exactly
-  // the failure mode the unknown-key rule exists to prevent.
-  const motionsPresent = MOTION_KEYS.filter((k) => k in tags);
-  if (motionsPresent.length > 1) {
-    warnings.push(
-      `${filename} carries ${motionsPresent.length} motion tags (${motionsPresent.join(', ')}) -- ` +
-      `only "${motionsPresent[0]}" applies, the rest are ignored`
-    );
+  // Same-slot tags conflict; different slots compose. Reported rather than
+  // resolved here: this module says what the author wrote, and dropping a tag
+  // silently is exactly the failure mode the unknown-key rule exists to
+  // prevent.
+  const slotWinners = {};
+  for (const [slot, keys] of Object.entries(TAG_SLOTS)) {
+    const present = keys.filter((k) => k in tags);
+    if (present.length === 0) continue;
+    slotWinners[slot] = present[0];
+    if (present.length > 1) {
+      warnings.push(
+        `${filename} carries ${present.length} ${slot} tags (${present.join(', ')}) -- ` +
+        `only "${present[0]}" applies, the rest are ignored`
+      );
+    }
   }
 
   return {
@@ -176,7 +187,7 @@ export function parseAssetLine(line) {
     ...(share !== undefined ? { share } : {}),
     tags,
     flags,
-    ...(motionsPresent.length > 0 ? { motionKey: motionsPresent[0] } : {}),
+    slots: slotWinners,
     unknownKeys,
     warnings,
   };

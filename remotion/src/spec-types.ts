@@ -21,27 +21,60 @@ export type Effect = "pan" | "zoom" | "diagonal" | "rotate" | "passthrough" | "s
  * skills/tiktok-news-video/references/tags/slide-left-right.md.
  */
 export interface SlideSpec {
+  /** "x" = a left/right traverse, "y" = a top/bottom one. */
+  axis: "x" | "y";
   /**
-   * Normalised position along the image where the frame starts, 0 = its left
-   * edge, 1 = its right edge. `from > to` IS the right-to-left variant -- there
-   * is deliberately no direction field, because two ways of saying which way
-   * the move goes is one way too many.
+   * Normalised position along the travel axis where the frame starts, 0 = the
+   * picture's leading edge, 1 = its trailing edge. `from > to` IS the reversed
+   * variant -- there is deliberately no direction field, because two ways of
+   * saying which way the move goes is one way too many.
    */
   from: number;
   /** Where the frame ends, same normalisation. */
   to: number;
   /**
-   * Vertical point to bring toward the centre of frame, normalised against the
-   * picture (`top 20%` -> 0.1, the centre of that band). Omitted = stay on the
-   * vertical centre, and then no zoom is applied at all.
+   * Scale (against the file's own pixels) the sharp foreground is painted at.
+   * Chosen at build time to leave a blur band on the axis PERPENDICULAR to
+   * travel while still leaving enough overflow along it to traverse -- see
+   * build-spec.mjs's slideForegroundScale. Shipped as a number rather than
+   * recomputed here so the inset->position conversion and the render agree by
+   * construction instead of by two implementations matching.
    */
-  anchorY?: number;
+  foregroundScale: number;
+  /**
+   * Point on the axis PERPENDICULAR to travel to bring toward the centre of
+   * frame, normalised against the picture (`top 20%` -> 0.1, the centre of
+   * that band). Omitted = stay centred, and then no zoom is applied at all.
+   */
+  anchorPos?: number;
   /**
    * Zoom held during an anchored slide. An anchor is unreachable without one:
-   * a cover-fitted wide photo is exactly frame-height, so there is no vertical
-   * slack to shift into until the picture is enlarged.
+   * there is no slack to shift into until the picture is enlarged. Applies to
+   * the sharp foreground ONLY -- the blurred backdrop stays put, per the
+   * author's rule "zoom dien ra trong anh thoi, dung zoom lop blur".
    */
   anchorScale?: number;
+}
+
+/**
+ * How a shot BEGINS -- a distinct slot from the camera move that runs during
+ * it. Both kinds below play over a blurred backdrop that is already on screen
+ * when the shot starts, so the entrance reads as the picture arriving rather
+ * than as the whole frame cutting.
+ */
+export interface EntranceSpec {
+  /**
+   * "slide_in": the picture flies in from one edge. "flip_book": it is revealed
+   * along a diagonal fold running from the top-left corner to the bottom-right.
+   */
+  type: "slide_in" | "flip_book";
+  /**
+   * Edge the picture enters from, for "slide_in". Deliberately the side
+   * OPPOSITE the traverse that follows.
+   */
+  fromSide?: "left" | "right" | "top" | "bottom";
+  /** How long the entrance takes, in frames. */
+  durationInFrames: number;
 }
 
 export type Direction = "left" | "right";
@@ -100,6 +133,8 @@ export interface SceneSpec {
   zoomTo?: number;
   /** Required for effect "slide". */
   slide?: SlideSpec;
+  /** How this shot begins. Independent of the move that runs during it. */
+  entrance?: EntranceSpec;
   fit: Fit;
   /**
    * Asset's natural pixel dimensions (from probe-asset.mjs's ffprobe read).

@@ -2,7 +2,7 @@ import React from "react";
 import type { CSSProperties } from "react";
 import { AbsoluteFill, Easing, Img, interpolate, staticFile, useCurrentFrame, useVideoConfig } from "remotion";
 import { Video as MediaVideo } from "@remotion/media";
-import type { AssetType, Direction, Effect, Fit, FocusPoint, SlideSpec, ZoomVariant } from "./spec-types";
+import type { AssetType, Direction, Effect, EntranceSpec, Fit, FocusPoint, SlideSpec, ZoomVariant } from "./spec-types";
 
 /**
  * ONE parametric scene component -- no bespoke-per-scene code.
@@ -26,8 +26,10 @@ export interface SceneProps {
   focus?: FocusPoint[];
   /** The ZOOMED end of a "zoom" effect, from `zoom_in: 50%` / `zoom_out: 50%`. Defaults to ZOOM_END. */
   zoomTo?: number;
-  /** Required for effect "slide" -- see SlideMedia. */
+  /** Required for effect "slide" -- see LayeredMedia. */
   slide?: SlideSpec;
+  /** How the shot begins -- a separate slot from the move that runs during it. */
+  entrance?: EntranceSpec;
   durationInFrames: number;
 }
 
@@ -61,6 +63,38 @@ const SLIDE_ANCHOR_RAMP = 0.25;
 // exact in real arithmetic, a subpixel gamble after rounding. This backs off
 // by an invisible amount so no edge can ever creep in.
 const SLIDE_TRAVERSAL_SAFETY = 0.98;
+
+// A picture flying in should feel like it ARRIVES: most of the travel early,
+// then a settle. The house ease-out is exactly that curve.
+const SLIDE_IN_EASING = Easing.bezier(0.22, 1, 0.36, 1);
+// A page turn is the opposite shape. Under the ease-out above it is ~93% done
+// by the halfway point, so at a 0.6s entrance the fold has swept past before
+// the eye finds it and the whole gesture reads as a hard cut. This ease-in-out
+// keeps the fold travelling across the middle of its run, where it is seen.
+const FLIP_BOOK_EASING = Easing.bezier(0.45, 0, 0.55, 1);
+
+/**
+ * The `flip_book` reveal: the picture is uncovered along a straight fold
+ * running from the top-left corner toward the bottom-right, like a page being
+ * turned back. `t` runs 0 (nothing shown) to 1 (fully shown).
+ *
+ * The fold is the line `x/W + y/H = 2t`, so the revealed region is a triangle
+ * growing out of the top-left corner until it passes the centre, then a
+ * pentagon closing on the bottom-right. Expressed as clip-path percentages,
+ * which lets one polygon serve any frame size.
+ */
+function flipBookClipPath(t: number): string {
+  const u = Math.min(Math.max(t, 0), 1) * 2;
+  const pct = (v: number) => `${(v * 100).toFixed(3)}%`;
+  if (u <= 1) {
+    return `polygon(0% 0%, ${pct(u)} 0%, 0% ${pct(u)})`;
+  }
+  const v = u - 1;
+  return `polygon(0% 0%, 100% 0%, 100% ${pct(v)}, ${pct(v)} 100%, 0% 100%)`;
+}
+
+/** Dark crease painted along the fold so it reads as a turning page, not a wipe. */
+const FLIP_BOOK_CREASE = "rgba(0,0,0,0.45)";
 
 const DIAGONAL_DRIFT_X_PCT = 0.05; // +/-5% of frame width
 const DIAGONAL_DRIFT_Y_PCT = 0.05; // +/-5% of frame height
@@ -252,6 +286,30 @@ function computeFocusTransform(
  * laid out with `object-fit: contain` over its own blurred backdrop (any
  * drift just reveals more backdrop, never black -- no clamp needed).
  */
+/**
+ * The scale a "zoom" effect is at on this frame. Split out of
+ * `computeTransform` so the blurred backdrop can be driven by the SAME number
+ * the foreground uses -- the author's rule is that zoom_in/zoom_out move the
+ * blur layer too ("ca zoom_in va zoom_out se deu tac dong ca phan blur do"),
+ * and a backdrop left at a fixed scale while the picture grows reads as the
+ * photo sliding off its own background.
+ */
+function computeZoomScale(
+  zoomVariant: ZoomVariant,
+  frame: number,
+  durationInFrames: number,
+  zoomTo: number = ZOOM_END,
+): number {
+  const endFrame = Math.max(durationInFrames - 1, 1);
+  const end = Math.min(Math.max(zoomTo, 1), ZOOM_MAX);
+  const [from, to] = zoomVariant === "out" ? [end, 1] : [1, end];
+  return interpolate(frame, [0, endFrame], [from, to], {
+    extrapolateLeft: "clamp",
+    extrapolateRight: "clamp",
+    easing: MOTION_EASING,
+  });
+}
+
 function computeTransform(
   effect: Effect,
   direction: Direction,
@@ -275,10 +333,7 @@ function computeTransform(
     // `zoomTo` is the ZOOMED end in both variants; zoomVariant only says
     // which end of the shot it belongs to. That is what makes `zoom_in: 50%`
     // and `zoom_out: 50%` a symmetrical pair rather than a coincidence.
-    const end = Math.min(Math.max(zoomTo, 1), ZOOM_MAX);
-    const [from, to] = zoomVariant === "out" ? [end, 1] : [1, end];
-    const scale = interpolate(frame, [0, endFrame], [from, to], clamp);
-    return `scale(${scale})`;
+    return `scale(${computeZoomScale(zoomVariant, frame, durationInFrames, zoomTo)})`;
   }
 
   if (effect === "pan") {
@@ -387,50 +442,57 @@ const PanMedia: React.FC<{
 };
 
 /**
- * A `slide_left_right` / `slide_right_left` traverse.
+ * A slide traverse: a sharp foreground travelling across a STATIONARY blurred
+ * backdrop, optionally arriving via an entrance.
  *
- * WHY THIS IS NOT A `computeTransform` BRANCH (every other effect is):
+ * WHY THIS IS NOT A `computeTransform` BRANCH (most effects are):
  * `computeTransform`'s output lands on a frame-sized element with
  * `object-fit: cover`. That element CLIPS the cropped-off sides -- the extra
  * image content is not in the box, so translating the box does not reveal it,
  * it drags the AbsoluteFill behind into view as a black band down one edge.
  * That happened, was measured, and was fixed once already; the clamp that now
- * prevents it bounds travel to `(scale - 1) * dimension / 2`, which at any
- * tasteful zoom is a few percent of frame width -- nowhere near a traverse.
+ * prevents it bounds travel to `(scale - 1) * dimension / 2`, a few percent of
+ * frame width -- nowhere near a traverse. So, exactly as `PanMedia` does, this
+ * sizes the media element at real painted dimensions and translates across it.
  *
- * So, exactly as `PanMedia` does, this sizes the <Img> at its TRUE cover-scaled
- * dimensions, putting the whole picture physically in the layout, and
- * translates across that. `pan` and `slide` are the two documented exceptions
- * to the one-parametric-transform rule, both for this same reason.
- *
- * Sizing at cover scale is also what satisfies the tag's blur rule: the
- * picture fills the frame on the axis of travel for the whole move, so no
- * blurred band is ever slid past.
+ * THE LAYER MODEL. The backdrop is its own layer and does NOT move with the
+ * foreground:
+ *   - along the travel axis the foreground is wider than the frame, so no band
+ *     is ever slid past ("lia sang phai thi phan blur ben trai cung phai mat di")
+ *   - across the perpendicular axis it is deliberately SHORTER, so the familiar
+ *     blur band shows there
+ *   - an anchor's zoom enlarges the foreground only, leaving the backdrop put
+ *     ("zoom dien ra trong anh thoi, dung zoom lop blur")
+ * `foregroundScale` is chosen at build time to satisfy both, and is shipped
+ * rather than recomputed so the inset->position conversion and the render agree
+ * by construction.
  *
  * Pure function of the local frame -- no randomness, no external state.
  */
-const SlideMedia: React.FC<{
+const LayeredMedia: React.FC<{
   assetPath: string;
   assetType: AssetType;
   slide: SlideSpec;
+  entrance?: EntranceSpec;
+  zoomTo?: number;
+  zoomVariant?: ZoomVariant;
   assetWidth: number;
   assetHeight: number;
   durationInFrames: number;
-}> = ({ assetPath, assetType, slide, assetWidth, assetHeight, durationInFrames }) => {
+}> = ({ assetPath, assetType, slide, entrance, zoomTo, zoomVariant, assetWidth, assetHeight, durationInFrames }) => {
   const frame = useCurrentFrame();
   const { width, height } = useVideoConfig();
   const endFrame = Math.max(durationInFrames - 1, 1);
+  const horizontal = slide.axis !== "y";
 
-  const coverScale = Math.max(width / assetWidth, height / assetHeight);
-  const scaledW = assetWidth * coverScale;
-  const scaledH = assetHeight * coverScale;
+  const paintedW = assetWidth * slide.foregroundScale;
+  const paintedH = assetHeight * slide.foregroundScale;
 
-  // An anchor is unreachable without a zoom: a cover-fitted wide photo is
-  // exactly frame-height, so `scaledH * 1 - height` is 0 and there is no
-  // vertical slack to shift into. The push opens the shot and then holds,
+  // An anchor is unreachable without a zoom: there is no slack to shift into
+  // until the picture is enlarged. The push opens the shot and then holds,
   // leaving the rest of the run to the travel itself.
-  const hasAnchor = typeof slide.anchorY === "number";
-  const scale = hasAnchor
+  const hasAnchor = typeof slide.anchorPos === "number";
+  const anchorZoom = hasAnchor
     ? interpolate(
         frame,
         [0, Math.max(endFrame * SLIDE_ANCHOR_RAMP, 1)],
@@ -438,9 +500,16 @@ const SlideMedia: React.FC<{
         { extrapolateLeft: "clamp", extrapolateRight: "clamp", easing: MOTION_EASING },
       )
     : 1;
+  // A zoom tag COMPOSES with a slide instead of conflicting with it -- the
+  // author writes `zoom_in 20% | slide_left_right` meaning a traverse that also
+  // closes in. The two ramps multiply: the anchor push opens the shot, the zoom
+  // runs its whole length.
+  const tagZoom =
+    zoomTo !== undefined ? computeZoomScale(zoomVariant ?? "in", frame, durationInFrames, zoomTo) : 1;
+  const scale = anchorZoom * tagZoom;
 
-  // Position of the frame along the picture: 0 = its left edge is at the
-  // frame's left edge, 1 = its right edge at the frame's right edge.
+  // Position of the frame along the picture: 0 = leading edges flush,
+  // 1 = trailing edges flush.
   const p = interpolate(frame, [0, endFrame], [slide.from, slide.to], {
     extrapolateLeft: "clamp",
     extrapolateRight: "clamp",
@@ -450,32 +519,97 @@ const SlideMedia: React.FC<{
   const overflow = (painted: number, frameExtent: number) =>
     (Math.max(painted * scale - frameExtent, 0) / 2) * SLIDE_TRAVERSAL_SAFETY;
 
-  // p = 0 must show the LEFT of the picture, which means translating the
-  // element to the RIGHT -- hence (1 - 2p), which runs +max -> -max.
-  const x = overflow(scaledW, width) * (1 - 2 * p);
+  // p = 0 must show the LEADING side of the picture, which means translating
+  // the element the other way -- hence (1 - 2p), running +max -> -max.
+  const travel = overflow(horizontal ? paintedW : paintedH, horizontal ? width : height) * (1 - 2 * p);
 
-  const maxY = overflow(scaledH, height);
-  const desiredY = hasAnchor ? -scale * (slide.anchorY! - 0.5) * scaledH : 0;
-  const y = Math.max(Math.min(desiredY, maxY), -maxY);
+  // The anchor acts on the axis PERPENDICULAR to travel.
+  const crossMax = overflow(horizontal ? paintedH : paintedW, horizontal ? height : width);
+  const crossDesired = hasAnchor
+    ? -scale * (slide.anchorPos! - 0.5) * (horizontal ? paintedH : paintedW)
+    : 0;
+  const cross = Math.max(Math.min(crossDesired, crossMax), -crossMax);
 
-  const style: CSSProperties = {
+  let x = horizontal ? travel : cross;
+  let y = horizontal ? cross : travel;
+
+  // The entrance rides ON TOP of the resting position, so the picture arrives
+  // where the traverse wants to begin instead of snapping there afterwards.
+  // The backdrop is untouched -- it is already on screen when the shot starts.
+  let clipPath: string | undefined;
+  let creaseT: number | undefined;
+  if (entrance) {
+    const t = interpolate(frame, [0, Math.max(entrance.durationInFrames, 1)], [0, 1], {
+      extrapolateLeft: "clamp",
+      extrapolateRight: "clamp",
+      easing: entrance.type === "flip_book" ? FLIP_BOOK_EASING : SLIDE_IN_EASING,
+    });
+    if (entrance.type === "slide_in") {
+      // Position that just clears the frame: half the picture plus half the
+      // frame from centre.
+      const clearance = horizontal ? (width + paintedW) / 2 : (height + paintedH) / 2;
+      const sign = entrance.fromSide === "right" || entrance.fromSide === "bottom" ? 1 : -1;
+      // Interpolate BETWEEN the off-frame position and where the traverse wants
+      // to begin -- do not add an offset on top of it. The traverse already
+      // starts with the picture pushed hard to one side, so adding pushed it
+      // twice as far and it spent most of the entrance out of sight entirely.
+      // (Measured: nothing but backdrop for the first third of the shot.)
+      const rest = horizontal ? x : y;
+      const arrived = rest + (1 - t) * (sign * clearance - rest);
+      if (horizontal) x = arrived;
+      else y = arrived;
+    } else {
+      clipPath = flipBookClipPath(t);
+      if (t < 1) creaseT = t;
+    }
+  }
+
+  const src = staticFile(assetPath);
+  const backdropStyle: CSSProperties = {
+    ...FULL_BLEED_STYLE,
+    transform: `scale(${BLUR_PAD_BACKDROP_SCALE})`,
+    transformOrigin: "center center",
+    filter: `blur(${BLUR_PAD_BLUR_PX}px)`,
+  };
+  const foregroundStyle: CSSProperties = {
     position: "absolute",
     top: "50%",
     left: "50%",
-    width: scaledW,
-    height: scaledH,
-    marginLeft: -scaledW / 2,
-    marginTop: -scaledH / 2,
+    width: paintedW,
+    height: paintedH,
+    marginLeft: -paintedW / 2,
+    marginTop: -paintedH / 2,
     transform: `translate(${x}px, ${y}px) scale(${scale})`,
     transformOrigin: "center center",
     objectFit: "cover",
+    ...(clipPath ? { clipPath } : {}),
   };
 
-  const src = staticFile(assetPath);
-  if (assetType === "video") {
-    return <MediaVideo src={src} style={style} objectFit="cover" loop muted />;
-  }
-  return <Img src={src} style={style} />;
+  const isVideo = assetType === "video";
+  return (
+    <AbsoluteFill>
+      {isVideo ? (
+        <MediaVideo src={src} style={backdropStyle} objectFit="cover" loop muted />
+      ) : (
+        <Img src={src} style={{ ...backdropStyle, objectFit: "cover" }} />
+      )}
+      {isVideo ? (
+        <MediaVideo src={src} style={foregroundStyle} objectFit="cover" loop muted />
+      ) : (
+        <Img src={src} style={foregroundStyle} />
+      )}
+      {creaseT !== undefined ? (
+        <AbsoluteFill
+          style={{
+            clipPath: flipBookClipPath(creaseT),
+            // 135deg runs top-left -> bottom-right, the same axis the fold
+            // sweeps along, so the dark band sits exactly on the moving edge.
+            background: `linear-gradient(135deg, transparent ${(creaseT * 100 - 7).toFixed(2)}%, ${FLIP_BOOK_CREASE} ${(creaseT * 100).toFixed(2)}%, transparent ${(creaseT * 100 + 1).toFixed(2)}%)`,
+          }}
+        />
+      ) : null}
+    </AbsoluteFill>
+  );
 };
 
 const CoverMedia: React.FC<{
@@ -580,9 +714,17 @@ const ContainBlurPad: React.FC<{
   const src = staticFile(assetPath);
   const isVideo = assetType === "video";
 
+  // The blur layer zooms WITH a zoom_in/zoom_out (but not with anything else:
+  // pan/diagonal/rotate drift the picture over a backdrop that stays put, and
+  // an aimed focus push deliberately leaves it alone too).
+  const backdropZoom =
+    effect === "zoom" && !(focus && focus.length > 0)
+      ? computeZoomScale(zoomVariant, frame, durationInFrames, zoomTo)
+      : 1;
+
   const backdropStyle: CSSProperties = {
     ...FULL_BLEED_STYLE,
-    transform: `scale(${BLUR_PAD_BACKDROP_SCALE})`,
+    transform: `scale(${BLUR_PAD_BACKDROP_SCALE * backdropZoom})`,
     transformOrigin: "center center",
     filter: `blur(${BLUR_PAD_BLUR_PX}px)`,
   };
@@ -624,6 +766,7 @@ export const Scene: React.FC<SceneProps> = ({
   focus,
   zoomTo,
   slide,
+  entrance,
   durationInFrames,
 }) => {
   const resolvedDirection: Direction = direction ?? "left";
@@ -635,12 +778,19 @@ export const Scene: React.FC<SceneProps> = ({
   // past. Falls through to the normal paths without dimensions (an older
   // spec.json, or a video we couldn't probe), which degrade rather than break.
   // `focus` still outranks it, matching the precedence in tags/README.md.
-  if (effect === "slide" && slide && assetWidth && assetHeight && !hasFocus) {
+  // `slide` present is the signal for the layered path, not `effect` -- an
+  // entrance-only shot (flip_book with no traverse) ships a degenerate slide
+  // (from === to) so one component serves both, rather than teaching the cover
+  // and blur-pad paths about entrances as well.
+  if (slide && assetWidth && assetHeight && !hasFocus) {
     return (
-      <SlideMedia
+      <LayeredMedia
         assetPath={assetPath}
         assetType={assetType}
         slide={slide}
+        entrance={entrance}
+        zoomTo={zoomTo}
+        zoomVariant={zoomVariant}
         assetWidth={assetWidth}
         assetHeight={assetHeight}
         durationInFrames={durationInFrames}

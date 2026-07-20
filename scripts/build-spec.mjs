@@ -377,8 +377,43 @@ function slideAnchorScale(anchorY) {
     SLIDE_ANCHOR_SCALE_MAX,
   );
 }
-/** Below this many pixels of horizontal overflow there is nothing to slide across. */
+/** Below this many pixels of overflow along the travel axis there is nothing to slide across. */
 const SLIDE_MIN_OVERFLOW_PX = 40;
+/**
+ * Blur band left on the axis PERPENDICULAR to travel, as a fraction of that
+ * axis. The author's model is a stable blur layer with the sharp picture
+ * moving over it, so a slide fills the axis it travels along (no band is ever
+ * slid past) but stays deliberately short across the other one, where the
+ * familiar band shows.
+ */
+const SLIDE_BAND_FRACTION = 0.1;
+/** How long an entrance takes. Long enough to read, short enough not to cost the shot. */
+const ENTRANCE_SEC = 0.75;
+/** Keeps an entrance-only shot from being frozen when no zoom was asked for. */
+const ENTRANCE_IDLE_ZOOM = 1.08;
+
+/**
+ * Scale (against the file's own pixels) to paint a slide's sharp foreground at.
+ *
+ * Wants two things at once: enough overflow ALONG the travel axis to actually
+ * traverse, and less than the frame ACROSS it so the blur band shows. Sizing
+ * by the perpendicular axis gives both -- until the picture is too narrow for
+ * the travel axis to overflow at all (a portrait asked to slide sideways), at
+ * which point there is no scale that satisfies both and cover is the honest
+ * fallback. `fill_full_screen` asks for cover directly.
+ */
+function slideForegroundScale(axis, probe, fillFullScreen) {
+  const coverScale = Math.max(WIDTH / probe.width, HEIGHT / probe.height);
+  if (fillFullScreen) return coverScale;
+
+  const horizontal = axis !== 'y';
+  const banded = horizontal
+    ? (HEIGHT * (1 - 2 * SLIDE_BAND_FRACTION)) / probe.height
+    : (WIDTH * (1 - 2 * SLIDE_BAND_FRACTION)) / probe.width;
+
+  const travelExtent = horizontal ? probe.width * banded - WIDTH : probe.height * banded - HEIGHT;
+  return travelExtent >= SLIDE_MIN_OVERFLOW_PX ? banded : coverScale;
+}
 
 /**
  * `zoom_in: 50%` / `zoom_out: 50%` -> the `zoom` effect with an explicit end.
@@ -409,62 +444,93 @@ function resolveZoomTag(zoom, filename, warnings) {
  * Also forces `fit: 'cover'`: a slide must not travel past a blurred band, and
  * cover is what fills the axis of travel. See tags/slide-left-right.md.
  */
-function resolveSlideTag(slide, probe, filename, warnings) {
-  const leftToRight = slide.direction !== 'right_left';
+function resolveSlideTag(slide, probe, filename, fillFullScreen, warnings) {
+  const axis = slide.direction === 'top_bottom' ? 'y' : 'x';
+  const horizontal = axis === 'x';
+  // Which end the travel starts at. `top_bottom` is the odd one out on
+  // purpose: the author described it as "appears at centre, then drifts down",
+  // so it starts halfway rather than at the picture's top edge.
+  const forward = slide.direction !== 'right_left';
+  const startsCentred = slide.direction === 'top_bottom';
+
   const startInset = slide.startInset ?? 0;
   const endInset = slide.endInset ?? 0;
 
-  const anchorY = typeof slide.anchorY === 'number' ? slide.anchorY : undefined;
-  const anchorScale = anchorY !== undefined ? slideAnchorScale(anchorY) : undefined;
+  const anchorPos = typeof slide.anchorY === 'number' ? slide.anchorY : undefined;
+  const anchorScale = anchorPos !== undefined ? slideAnchorScale(anchorPos) : undefined;
 
-  const coverScale = Math.max(WIDTH / probe.width, HEIGHT / probe.height);
-  const paintedW = probe.width * coverScale * (anchorScale ?? 1);
+  const foregroundScale = slideForegroundScale(axis, probe, fillFullScreen);
+  const paintedAlong = (horizontal ? probe.width : probe.height) * foregroundScale;
+  const frameAlong = horizontal ? WIDTH : HEIGHT;
 
-  // `from`/`to` index the TRAVERSABLE RANGE (0 = the frame's leading edge on
-  // the picture's leading edge, 1 = trailing on trailing), but the author's
-  // inset is a fraction of the PICTURE. Those differ by exactly the width of
-  // the frame: only `paintedW - WIDTH` of the picture is ever traversed, so a
-  // raw 0.2 would put the frame edge at 0.2 x (1 - WIDTH/paintedW) of the
-  // image -- ~16% on a 3:1 panorama, ~14% on a 16:9 photo, always short of
-  // what "start 20% in from the left" says. Converting here keeps the tag
-  // honest and keeps the conversion where the dimensions are.
-  //
-  // (During an anchored slide's opening push the zoom is still ramping, so the
-  // mapping is exact only once it settles -- a fraction of a second, and the
-  // alternative is a scale-dependent position the author cannot predict.)
-  const traversable = 1 - WIDTH / paintedW;
+  // `from`/`to` index the TRAVERSABLE RANGE (0 = leading edges flush, 1 =
+  // trailing edges flush), but the author's inset is a fraction of the
+  // PICTURE. Those differ by exactly one frame extent: only
+  // `painted - frame` of the picture is ever traversed, so a raw 0.2 would put
+  // the frame edge at 0.2 x (1 - frame/painted) of the image -- always short of
+  // what "start 20% in from the left" says. Converting here, where the
+  // dimensions are, keeps the tag honest.
+  const traversable = 1 - frameAlong / paintedAlong;
   const toRange = (inset) =>
     traversable > 0 ? Math.min(Math.max(inset / traversable, 0), 1) : 0;
 
-  let from = leftToRight ? toRange(startInset) : 1 - toRange(startInset);
-  let to = leftToRight ? 1 - toRange(endInset) : toRange(endInset);
-
-  if (Math.abs(to - from) < SLIDE_MIN_TRAVEL) {
-    warnings.push(
-      `${filename}: the slide insets leave only ${Math.round(Math.abs(to - from) * 100)}% to ` +
-      `travel across, which would barely move -- sliding the full width instead.`
-    );
-    from = leftToRight ? 0 : 1;
-    to = leftToRight ? 1 : 0;
+  let from;
+  let to;
+  if (startsCentred) {
+    from = 0.5;
+    to = 1;
+  } else {
+    from = forward ? toRange(startInset) : 1 - toRange(startInset);
+    to = forward ? 1 - toRange(endInset) : toRange(endInset);
   }
 
-  // A slide needs horizontal crop overflow to travel across. Cover-fitting a
-  // PORTRAIT image into 1080x1920 binds on width, so there is none -- the tag
-  // silently produces a still frame unless an anchor's zoom creates some.
-  const overflowPx = paintedW - WIDTH;
+  const overflowPx = paintedAlong - frameAlong;
   if (overflowPx < SLIDE_MIN_OVERFLOW_PX) {
     warnings.push(
       `${filename} is ${probe.width}x${probe.height} -- once it fills a 1080x1920 frame there is ` +
-      `nothing either side to slide across, so the shot will barely move. Slides want a wide ` +
-      `picture; use zoom_in/zoom_out or focus_object on this one.`
+      `nothing ${horizontal ? 'either side' : 'above or below'} to slide across, so the shot will ` +
+      `barely move. Slides want a picture that is long on the axis they travel.`
     );
+  } else if (Math.abs(to - from) < SLIDE_MIN_TRAVEL) {
+    warnings.push(
+      `${filename}: the slide insets leave only ${Math.round(Math.abs(to - from) * 100)}% to ` +
+      `travel across, which would barely move -- sliding the full length instead.`
+    );
+    from = forward ? 0 : 1;
+    to = forward ? 1 : 0;
   }
 
   return {
     effect: 'slide',
-    fit: 'cover',
-    slide: { from, to, ...(anchorY !== undefined ? { anchorY, anchorScale } : {}) },
+    slide: {
+      axis,
+      from,
+      to,
+      foregroundScale,
+      ...(anchorPos !== undefined ? { anchorPos, anchorScale } : {}),
+    },
   };
+}
+
+/**
+ * How the shot BEGINS -- a slot of its own, separate from the move that runs
+ * during it.
+ *
+ * A slide with no explicit entrance tag gets one for free: the picture flies in
+ * from the side OPPOSITE the traverse, over a blur backdrop that is already on
+ * screen, so arriving at a new screen reads as a transition rather than a cut.
+ * `flip_book` claims the same slot, which is why the two are alternatives and
+ * not a stack.
+ */
+function resolveEntrance(asset, slideSpec) {
+  const frames = Math.round(ENTRANCE_SEC * FPS);
+  if (asset.flipBook) return { type: 'flip_book', durationInFrames: frames };
+  if (!slideSpec) return undefined;
+  // "appears at centre then drifts" -- the author described this one's own
+  // opening, so it does not also fly in.
+  if (slideSpec.axis === 'y') return undefined;
+  const fromSide = slideSpec.to > slideSpec.from ? 'right' : 'left';
+  return { type: 'slide_in', fromSide, durationInFrames: frames };
 }
 
 /**
@@ -478,10 +544,57 @@ function resolveSlideTag(slide, probe, filename, warnings) {
  */
 function resolveAssetMotion(asset, probe, warnings) {
   const overrides = {};
+
+  // --- fit slot -------------------------------------------------------------
   if (asset.fillFullScreen) overrides.fit = 'cover';
-  if (asset.focus) return overrides;
-  if (asset.slide) Object.assign(overrides, resolveSlideTag(asset.slide, probe, asset.filename, warnings));
-  else if (asset.zoom) Object.assign(overrides, resolveZoomTag(asset.zoom, asset.filename, warnings));
+
+  // --- aim slot -------------------------------------------------------------
+  // focus_object is the one genuine rival to a slide: both are the traverse,
+  // and they cannot both own it. Everything else COMPOSES.
+  if (asset.focus) {
+    if (asset.slide) {
+      warnings.push(
+        `${asset.filename}: focus_object and a slide both decide where the camera goes -- ` +
+        `used focus_object, ignored the slide.`
+      );
+    }
+    return overrides;
+  }
+
+  // --- zoom slot ------------------------------------------------------------
+  // Applied BEFORE the traverse so a slide can overwrite `effect` while
+  // leaving zoomTo/zoomVariant in place: `zoom_in 20% | slide_left_right` is a
+  // traverse that also closes in, not a conflict.
+  if (asset.zoom) Object.assign(overrides, resolveZoomTag(asset.zoom, asset.filename, warnings));
+
+  // --- traverse slot --------------------------------------------------------
+  if (asset.slide) {
+    Object.assign(
+      overrides,
+      resolveSlideTag(asset.slide, probe, asset.filename, asset.fillFullScreen, warnings),
+    );
+  } else if (asset.flipBook) {
+    // An entrance with no traverse still needs the layered path (backdrop +
+    // foreground + reveal), so it ships a DEGENERATE slide -- from === to, no
+    // travel. One component then serves both cases instead of teaching the
+    // cover and blur-pad paths about entrances too.
+    overrides.effect = 'slide';
+    overrides.slide = {
+      axis: 'x',
+      from: 0.5,
+      to: 0.5,
+      foregroundScale: slideForegroundScale('x', probe, asset.fillFullScreen),
+    };
+    if (overrides.zoomTo === undefined) {
+      overrides.zoomTo = ENTRANCE_IDLE_ZOOM;
+      overrides.zoomVariant = 'in';
+    }
+  }
+
+  // --- entrance slot --------------------------------------------------------
+  const entrance = resolveEntrance(asset, overrides.slide);
+  if (entrance) overrides.entrance = entrance;
+
   return overrides;
 }
 
@@ -588,6 +701,7 @@ function expandScreensIntoShots(screens, warnings = []) {
         ...(asset.fillFullScreen ? { fillFullScreen: true } : {}),
         ...(asset.zoom ? { zoom: asset.zoom } : {}),
         ...(asset.slide ? { slide: asset.slide } : {}),
+        ...(asset.flipBook ? { flipBook: true } : {}),
         startSec: boundaries[i],
         endSec: boundaries[i + 1],
         ...(i === 0 && words ? { words } : {}),
@@ -632,7 +746,7 @@ export async function buildSpec({ scenes, workspaceDir, narrationAudioPath, bgmA
     // aspect ratio, so letting it bump the counter would flip the next
     // portrait's push/pull for no visible reason.
     const occurrenceForThisScene = { ...occurrence };
-    const hasMotionTag = Boolean(scene.focus || scene.slide || scene.zoom);
+    const hasMotionTag = Boolean(scene.focus || scene.slide || scene.zoom || scene.flipBook);
     if (probe.type === 'image' && !hasMotionTag) {
       const ratioWH = probe.width / probe.height;
       if (ratioWH >= LANDSCAPE_RATIO) occurrence.landscape += 1;
@@ -643,7 +757,7 @@ export async function buildSpec({ scenes, workspaceDir, narrationAudioPath, bgmA
     // Automatic classification first, then whatever the author's tags override.
     // A tag changes which parameters Scene.tsx receives -- it never adds a
     // bespoke rendering path (see tags/README.md).
-    const { effect, direction, zoomVariant, fit, zoomTo, slide } = {
+    const { effect, direction, zoomVariant, fit, zoomTo, slide, entrance } = {
       ...classifyAsset(probe, occurrenceForThisScene),
       ...resolveAssetMotion(
         {
@@ -652,6 +766,7 @@ export async function buildSpec({ scenes, workspaceDir, narrationAudioPath, bgmA
           fillFullScreen: scene.fillFullScreen,
           zoom: scene.zoom,
           slide: scene.slide,
+          flipBook: scene.flipBook,
         },
         probe,
         warnings,
@@ -670,6 +785,7 @@ export async function buildSpec({ scenes, workspaceDir, narrationAudioPath, bgmA
       ...(zoomVariant ? { zoomVariant } : {}),
       ...(zoomTo !== undefined ? { zoomTo } : {}),
       ...(slide ? { slide } : {}),
+      ...(entrance ? { entrance } : {}),
       fit,
       assetWidth: probe.width,
       assetHeight: probe.height,
