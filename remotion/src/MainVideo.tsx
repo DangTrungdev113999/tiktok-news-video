@@ -44,6 +44,7 @@ export const MainVideo: React.FC<VideoSpec> = ({
             zoomTo={scene.zoomTo}
             slide={scene.slide}
             entrance={scene.entrance}
+            exit={scene.exit}
             durationInFrames={scene.durationInFrames}
           />
           {scene.isHook && brandKit ? (

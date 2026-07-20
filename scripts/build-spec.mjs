@@ -403,6 +403,11 @@ const ENTRANCE_SEC = 0.75;
  * movement: a slide that cannot move is not a slide.
  */
 const SLIDE_FALLBACK_FILL = 1.3;
+// End-of-screen punch: a quick push into the cut, the punctuation that keeps a
+// feed video moving. Set at the author's request ("cuoi moi screen cho 1 hieu
+// ung chuyen canh don gian... tao nhip nhanh cho video").
+const PUNCH_SEC = 0.25;
+const PUNCH_SCALE = 1.12;
 /** Keeps an entrance-only shot from being frozen when no zoom was asked for. */
 const ENTRANCE_IDLE_ZOOM = 1.08;
 
@@ -699,7 +704,7 @@ function resolveShotBoundaries(screen, assets) {
  */
 function expandScreensIntoShots(screens, warnings = []) {
   const shots = [];
-  for (const screen of screens) {
+  for (const [screenIndex, screen] of screens.entries()) {
     const assets = normalizeAssets(screen);
 
     // Cut points come from the narration when the skill pinned them there,
@@ -744,6 +749,14 @@ function expandScreensIntoShots(screens, warnings = []) {
         startSec: boundaries[i],
         endSec: boundaries[i + 1],
         ...(i === 0 && words ? { words } : {}),
+        // The punch belongs to the SCREEN, so it goes on that screen's last
+        // shot only -- a screen holding three images would otherwise punch
+        // three times and read as a stutter. The final screen gets none:
+        // there is no cut for it to land on, and ending mid-push looks like
+        // the video was clipped.
+        ...(i === assets.length - 1 && screenIndex < screens.length - 1
+          ? { isScreenEnd: true }
+          : {}),
       });
     });
   }
@@ -825,6 +838,18 @@ export async function buildSpec({ scenes, workspaceDir, narrationAudioPath, bgmA
       ...(zoomTo !== undefined ? { zoomTo } : {}),
       ...(slide ? { slide } : {}),
       ...(entrance ? { entrance } : {}),
+      ...(scene.isScreenEnd
+        ? {
+            exit: {
+              type: 'punch',
+              durationInFrames: Math.min(
+                Math.round(PUNCH_SEC * FPS),
+                Math.max(durationInFrames - 1, 1),
+              ),
+              scale: PUNCH_SCALE,
+            },
+          }
+        : {}),
       fit,
       assetWidth: probe.width,
       assetHeight: probe.height,

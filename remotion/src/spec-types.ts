@@ -116,6 +116,21 @@ export interface FocusPoint {
   note?: string;
 }
 
+/**
+ * How a shot ENDS. A quick push in the last fraction of a second, then a hard
+ * cut -- the punctuation that keeps a feed video moving. Set on the LAST shot
+ * of each screen (not every shot: a screen holding three images would
+ * otherwise punch three times and read as a stutter) and never on the final
+ * screen, where there is no cut to land on.
+ */
+export interface ExitSpec {
+  type: "punch";
+  /** How many frames before the end the push starts. */
+  durationInFrames: number;
+  /** Scale reached exactly at the cut. */
+  scale: number;
+}
+
 export interface SceneSpec {
   /** Path relative to the repo root, e.g. "assets/hop-bao.jpg". */
   assetPath: string;
@@ -135,6 +150,8 @@ export interface SceneSpec {
   slide?: SlideSpec;
   /** How this shot begins. Independent of the move that runs during it. */
   entrance?: EntranceSpec;
+  /** How this shot ends. Present on the last shot of each screen but the last. */
+  exit?: ExitSpec;
   fit: Fit;
   /**
    * Asset's natural pixel dimensions (from probe-asset.mjs's ffprobe read).

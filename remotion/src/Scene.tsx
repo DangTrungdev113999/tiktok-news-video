@@ -2,7 +2,7 @@ import React from "react";
 import type { CSSProperties } from "react";
 import { AbsoluteFill, Easing, Img, interpolate, staticFile, useCurrentFrame, useVideoConfig } from "remotion";
 import { Video as MediaVideo } from "@remotion/media";
-import type { AssetType, Direction, Effect, EntranceSpec, Fit, FocusPoint, SlideSpec, ZoomVariant } from "./spec-types";
+import type { AssetType, Direction, Effect, EntranceSpec, ExitSpec, Fit, FocusPoint, SlideSpec, ZoomVariant } from "./spec-types";
 
 /**
  * ONE parametric scene component -- no bespoke-per-scene code.
@@ -32,6 +32,8 @@ export interface SceneProps {
   slide?: SlideSpec;
   /** How the shot begins -- a separate slot from the move that runs during it. */
   entrance?: EntranceSpec;
+  /** How the shot ends -- the punch into the cut. */
+  exit?: ExitSpec;
   durationInFrames: number;
 }
 
@@ -65,6 +67,11 @@ const SLIDE_ANCHOR_RAMP = 0.25;
 // exact in real arithmetic, a subpixel gamble after rounding. This backs off
 // by an invisible amount so no edge can ever creep in.
 const SLIDE_TRAVERSAL_SAFETY = 0.98;
+
+// The exit punch ACCELERATES into the cut -- the opposite gesture to an
+// entrance. An ease-out here would do most of its travel early and then coast
+// into the boundary, which reads as the shot sagging rather than snapping.
+const PUNCH_EASING = Easing.bezier(0.4, 0, 1, 1);
 
 // A picture flying in should feel like it ARRIVES: most of the travel early,
 // then a settle. The house ease-out is exactly that curve.
@@ -810,6 +817,39 @@ const ContainBlurPad: React.FC<{
   );
 };
 
+/**
+ * The end-of-screen punch: a quick push over the last fraction of a second,
+ * landing exactly on the cut.
+ *
+ * Wraps whichever media component was chosen rather than living inside each of
+ * them -- it scales the WHOLE composed frame (blurred backdrop, bands and all),
+ * which is both the look wanted and one implementation instead of three. Since
+ * every path already fills the frame, scaling up can never uncover an edge.
+ *
+ * Captions and the hook card sit outside <Scene>, so they deliberately do NOT
+ * punch: text that jumps on every cut is unreadable.
+ */
+const PunchWrapper: React.FC<{
+  exit?: ExitSpec;
+  durationInFrames: number;
+  children: React.ReactNode;
+}> = ({ exit, durationInFrames, children }) => {
+  const frame = useCurrentFrame();
+  if (!exit) return <>{children}</>;
+
+  const start = Math.max(durationInFrames - exit.durationInFrames, 0);
+  const scale = interpolate(frame, [start, Math.max(durationInFrames - 1, 1)], [1, exit.scale], {
+    extrapolateLeft: "clamp",
+    extrapolateRight: "clamp",
+    easing: PUNCH_EASING,
+  });
+  return (
+    <AbsoluteFill style={{ transform: `scale(${scale})`, transformOrigin: "center center" }}>
+      {children}
+    </AbsoluteFill>
+  );
+};
+
 export const Scene: React.FC<SceneProps> = ({
   assetPath,
   assetType,
@@ -824,6 +864,7 @@ export const Scene: React.FC<SceneProps> = ({
   zoomTo,
   slide,
   entrance,
+  exit,
   durationInFrames,
 }) => {
   const resolvedDirection: Direction = direction ?? "left";
@@ -839,8 +880,8 @@ export const Scene: React.FC<SceneProps> = ({
   // entrance-only shot (flip_book with no traverse) ships a degenerate slide
   // (from === to) so one component serves both, rather than teaching the cover
   // and blur-pad paths about entrances as well.
-  if (slide && assetWidth && assetHeight && !hasFocus) {
-    return (
+  const media =
+    slide && assetWidth && assetHeight && !hasFocus ? (
       <LayeredMedia
         assetPath={assetPath}
         assetType={assetType}
@@ -852,11 +893,7 @@ export const Scene: React.FC<SceneProps> = ({
         assetHeight={assetHeight}
         durationInFrames={durationInFrames}
       />
-    );
-  }
-
-  if (fit === "contain-blur-pad") {
-    return (
+    ) : fit === "contain-blur-pad" ? (
       <ContainBlurPad
         assetPath={assetPath}
         assetType={assetType}
@@ -870,11 +907,8 @@ export const Scene: React.FC<SceneProps> = ({
         assetHeight={assetHeight}
         durationInFrames={durationInFrames}
       />
-    );
-  }
-
-  return (
-    <CoverMedia
+    ) : (
+      <CoverMedia
       assetPath={assetPath}
       assetType={assetType}
       effect={effect}
@@ -888,4 +922,6 @@ export const Scene: React.FC<SceneProps> = ({
       durationInFrames={durationInFrames}
     />
   );
+
+  return <PunchWrapper exit={exit} durationInFrames={durationInFrames}>{media}</PunchWrapper>;
 };
