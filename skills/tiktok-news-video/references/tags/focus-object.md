@@ -51,6 +51,43 @@ you measure against.
 Description images are **not renderable assets**. Never put one in a screen's
 `assets[]`; it appears only inside a `focus_object` value.
 
+## Several subjects in one image
+
+One picture often earns more than one moment:
+
+```
+anh_1.jpg | focus_object: 1 lúc "Sơn Tùng", 2 lúc "Trung Đặng"
+```
+
+The camera visits each in turn, **landing on each subject exactly as they are
+named**, then holding until it's time to move on. Resolve one entry per
+subject, in the order the narration names them, and pass `focus` as an
+**array**:
+
+```json
+"focus": [
+  { "x": 0.22, "y": 0.28, "scale": 1.5, "peakSec": 3.0, "note": "so 1 - ao vest xanh" },
+  { "x": 0.75, "y": 0.31, "scale": 1.5, "peakSec": 6.2, "note": "so 2 - ao vest hong" }
+]
+```
+
+`buildSpec` enforces that the cues are in time order and at least 12 frames
+apart, and warns when it had to move one. A single subject is just an array of
+one — pass a bare object and it's wrapped for you.
+
+**Give each leg room.** Two names spoken a second apart in a wide photo means
+the camera lurches. Better to focus only the subjects that matter, or let the
+screen run longer.
+
+### Travelling between them
+
+`Scene.tsx` doesn't cut between subjects and doesn't whip-pan. It eases the
+zoom back on the way across, glides over, and pushes back in — the way a real
+camera repositions. That relief beat only triggers when the two subjects are
+genuinely far apart, so two faces side by side still get a simple, direct
+move. Both the zoom AND the aim are interpolated, which is what keeps the
+subject glued to the middle of the travel instead of sliding through frame.
+
 ## `lúc "..."` — land the zoom on a word
 
 `lúc "Trung Đặng"` inside the value means: **the push reaches its peak exactly
@@ -98,6 +135,9 @@ For each asset carrying `focus_object`:
    only catch it if you tell them what you picked.
 
 ## The two shapes — what you pass vs what ships
+
+(Shown here with a single target for clarity; the same conversion applies to
+every entry when `focus` is an array.)
 
 **What you pass to `buildSpec`** — timing in absolute audio seconds, because
 that's what Step 2 gives you:

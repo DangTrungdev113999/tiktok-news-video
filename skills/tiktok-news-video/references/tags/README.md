@@ -20,12 +20,33 @@ video.
 | Separator | ` \| ` between the filename and each tag, and between tags |
 | Key form | ASCII snake_case ID — no Vietnamese diacritics, no spaces |
 | Key/value | `key: value`. The value's shape is that key's own business |
-| Bare flags | A few tags have no value and are written as the key alone (`fill_full_screen`) |
+| Bare flags | A few tags have no value and are written as the key alone |
 | Duration share | `(30%)` directly after the filename — not a tag; see below |
 | Unknown key | **Report it to the user and continue** — never silently drop it, never guess |
 
 Values are free-form for keys that say so. `focus_object` takes natural
 Vietnamese; most other keys take a fixed enum.
+
+### Loose forms are accepted on purpose
+
+Teach the canonical form above. But `scripts/parse-tags.mjs` accepts sloppier
+input, because the people typing these lines are not programmers and rejecting
+an otherwise clear line is a worse outcome than parsing it slightly loosely.
+All of these mean the same thing:
+
+```
+anh_1.jpg | focus_object: nguoi thu 1
+anh_1.jpg : focus_object nguoi thu 1
+anh_1 focus_object nguoi thu 1
+```
+
+Two rules make that safe: **the filename is always the first token**, and **a
+tag always begins at a registered key**. Everything between one key and the
+next is the first key's value — which is why a value can hold spaces, commas,
+quotes and diacritics with no escaping at all.
+
+Do NOT relax this further by guessing at unregistered words. An unknown key is
+reported, never interpreted.
 
 ## One screen, several assets
 

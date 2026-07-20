@@ -79,7 +79,14 @@ export interface SceneSpec {
    * `effect`/`zoomVariant` -- the shot becomes an aimed push toward this point
    * instead of whatever aspect ratio would have chosen.
    */
-  focus?: FocusPoint;
+  /**
+   * One entry per thing the author asked to focus on, in time order. Several
+   * entries mean the camera travels between them within this one shot
+   * ('focus_object: 1 luc "abc", 2 luc "xyz"'). Overrides `effect`/
+   * `zoomVariant` -- the shot becomes an aimed move instead of whatever
+   * aspect ratio would have chosen.
+   */
+  focus?: FocusPoint[];
   /** Absolute frame (at the composition's fps) this scene's Sequence starts at. */
   startFrame: number;
   /** How many frames this scene's Sequence lasts. */

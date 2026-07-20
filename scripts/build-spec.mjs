@@ -286,27 +286,53 @@ function resolveShareFractions(assets, warnings = []) {
  * know about, so every clamp is reported.
  */
 const MIN_PEAK_LEAD_FRAMES = 6;
+// Shortest gap between two focus targets in the same shot. Below this the
+// camera snaps between subjects instead of travelling.
+const MIN_TRANSIT_FRAMES = 12;
 
-function resolveFocusPeak(focus, startFrame, durationInFrames, filename, warnings) {
-  const { peakSec, ...rest } = focus;
-  if (typeof peakSec !== 'number') return rest;
-
+function resolveFocusPeaks(focus, startFrame, durationInFrames, filename, warnings) {
+  const targets = Array.isArray(focus) ? focus : [focus];
   const lastFrame = Math.max(durationInFrames - 1, 1);
-  const local = Math.round(peakSec * FPS) - startFrame;
-  const peakFrame = Math.min(Math.max(local, MIN_PEAK_LEAD_FRAMES), lastFrame);
 
-  if (local < MIN_PEAK_LEAD_FRAMES) {
-    warnings.push(
-      `${filename}: the focus cue at ${peakSec.toFixed(2)}s lands ${((startFrame - Math.round(peakSec * FPS)) / FPS).toFixed(2)}s ` +
-      `BEFORE this shot starts, so the zoom cannot peak on it -- cut to this asset earlier.`
-    );
-  } else if (local > lastFrame) {
-    warnings.push(
-      `${filename}: the focus cue at ${peakSec.toFixed(2)}s lands after this shot ends, ` +
-      `so the zoom peaks at the cut instead -- give this asset more of the screen.`
-    );
+  const resolved = targets.map((target) => {
+    const { peakSec, ...rest } = target;
+    if (typeof peakSec !== 'number') return rest;
+
+    const local = Math.round(peakSec * FPS) - startFrame;
+    const label = targets.length > 1 ? `${filename} (${rest.note ?? 'focus'})` : filename;
+
+    if (local < MIN_PEAK_LEAD_FRAMES) {
+      warnings.push(
+        `${label}: the focus cue at ${peakSec.toFixed(2)}s lands ` +
+        `${((startFrame - Math.round(peakSec * FPS)) / FPS).toFixed(2)}s BEFORE this shot starts, ` +
+        `so the zoom cannot peak on it -- cut to this asset earlier.`
+      );
+    } else if (local > lastFrame) {
+      warnings.push(
+        `${label}: the focus cue at ${peakSec.toFixed(2)}s lands after this shot ends, ` +
+        `so the zoom peaks at the cut instead -- give this asset more of the screen.`
+      );
+    }
+    return { ...rest, peakFrame: Math.min(Math.max(local, MIN_PEAK_LEAD_FRAMES), lastFrame) };
+  });
+
+  // Several targets in one shot must be in time order, and far enough apart to
+  // travel between. Out-of-order cues mean the author listed the subjects in a
+  // different order than the narration names them -- worth saying, because the
+  // camera visits them in cue order regardless.
+  for (let i = 1; i < resolved.length; i += 1) {
+    const prev = resolved[i - 1].peakFrame ?? 0;
+    const here = resolved[i].peakFrame ?? lastFrame;
+    if (here <= prev) {
+      warnings.push(
+        `${filename}: focus target ${i + 1} is cued at or before target ${i} -- ` +
+        `the moves were spread out to stay watchable, so they no longer land exactly on their words.`
+      );
+    }
+    resolved[i].peakFrame = Math.min(Math.max(here, prev + MIN_TRANSIT_FRAMES), lastFrame);
   }
-  return { ...rest, peakFrame };
+
+  return resolved;
 }
 
 /** Shortest shot worth cutting to. Below this the cut reads as a glitch. */
@@ -474,7 +500,7 @@ export async function buildSpec({ scenes, workspaceDir, narrationAudioPath, bgmA
       assetWidth: probe.width,
       assetHeight: probe.height,
       ...(scene.focus
-        ? { focus: resolveFocusPeak(scene.focus, startFrame, durationInFrames, scene.assetFilename, warnings) }
+        ? { focus: resolveFocusPeaks(scene.focus, startFrame, durationInFrames, scene.assetFilename, warnings) }
         : {}),
       startFrame,
       durationInFrames,

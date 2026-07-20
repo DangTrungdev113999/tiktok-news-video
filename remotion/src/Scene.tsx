@@ -22,8 +22,8 @@ export interface SceneProps {
   /** Asset's natural pixel dimensions -- required for "pan" to compute its true crop overflow (see PanMedia). */
   assetWidth?: number;
   assetHeight?: number;
-  /** From a `focus_object:` tag. When present it replaces the effect with an aimed push. */
-  focus?: FocusPoint;
+  /** From a `focus_object:` tag -- one entry per subject, in time order. Replaces the effect with an aimed move. */
+  focus?: FocusPoint[];
   durationInFrames: number;
 }
 
@@ -65,6 +65,12 @@ const MOTION_EASING = Easing.bezier(0.22, 1, 0.36, 1);
 // a spoken word must still be visibly travelling as the word arrives. See
 // computeFocusTransform.
 const FOCUS_EASING = Easing.bezier(0.4, 0, 0.2, 1);
+
+// Travelling between two focus targets further apart than this (normalised
+// distance across the picture) eases the zoom back on the way, so the move
+// reads as a camera repositioning rather than a whip-pan.
+const TRANSIT_RELIEF_DISTANCE = 0.18;
+const TRANSIT_RELIEF_SCALE = 0.82;
 
 // Safety factor applied to the theoretical max crop overflow before letting
 // translate use it (leaves a little margin for rounding/anti-aliasing).
@@ -127,7 +133,7 @@ function clampToAxisOverflow(desiredPx: number, scale: number, dimension: number
  * BUILD time, not here.
  */
 function computeFocusTransform(
-  focus: FocusPoint,
+  focus: FocusPoint[],
   frame: number,
   durationInFrames: number,
   drawnW: number,
@@ -136,27 +142,63 @@ function computeFocusTransform(
   frameH: number,
 ): string {
   const endFrame = Math.max(durationInFrames - 1, 1);
-  const targetScale = Math.max(focus.scale, 1);
 
-  // The push lands ON the moment that matters -- normally the frame where the
-  // narration says the subject's name -- and then HOLDS there for the rest of
-  // the shot (extrapolateRight: clamp). Peaking at the end of the shot
-  // instead would leave the move still travelling while the name is spoken,
-  // which is the thing this tag exists to avoid. Clamped into the shot so a
-  // mistimed cue can't produce a degenerate [0, 0] range.
-  const peakFrame = Math.min(Math.max(focus.peakFrame ?? endFrame, 1), endFrame);
+  // Keyframes: start wide on the first subject, then land on each target in
+  // turn. Each move ENDS on its own cue frame and holds until the next one
+  // starts travelling, so every subject is at rest exactly as they're named.
+  const stops: Array<{ f: number; x: number; y: number; s: number }> = [
+    { f: 0, x: focus[0].x, y: focus[0].y, s: 1 },
+  ];
+
+  focus.forEach((t, i) => {
+    const f = Math.min(Math.max(t.peakFrame ?? endFrame, 1), endFrame);
+    const prev = focus[i - 1];
+
+    // Travelling between two distant subjects at full zoom is a whip-pan, and
+    // it reads as a jolt. A real camera pulls back, glides across, pushes
+    // back in. This inserts that relief beat at the midpoint -- only when the
+    // subjects are actually far apart, so two faces side by side still get a
+    // simple, direct move.
+    if (prev && Math.hypot(t.x - prev.x, t.y - prev.y) > TRANSIT_RELIEF_DISTANCE) {
+      stops.push({
+        f: (stops[stops.length - 1].f + f) / 2,
+        x: (prev.x + t.x) / 2,
+        y: (prev.y + t.y) / 2,
+        s: Math.max(Math.min(prev.scale, t.scale) * TRANSIT_RELIEF_SCALE, 1),
+      });
+    }
+
+    stops.push({ f, x: t.x, y: t.y, s: Math.max(t.scale, 1) });
+  });
+
+  // interpolate() requires a strictly increasing input range; cues that land
+  // on the same frame (or out of order) would otherwise throw mid-render.
+  for (let i = 1; i < stops.length; i += 1) {
+    if (stops[i].f <= stops[i - 1].f) stops[i].f = stops[i - 1].f + 1;
+  }
 
   // NOT the house MOTION_EASING here. That curve is a hard ease-out: it is
   // ~93% of the way there by the halfway point, which is right for an ambient
   // Ken-Burns drift but wrong for a move that has to LAND on a word -- the eye
   // reads the arrival a third of the way in and the cue passes unmarked. This
   // gentler ease-in-out keeps the travel spread across the run-up so the
-  // arrival coincides with the beat.
-  const scale = interpolate(frame, [0, peakFrame], [1, targetScale], {
+  // arrival coincides with the beat, and makes each leg of a multi-target
+  // move ease out of one subject and into the next instead of jerking.
+  const ramp = {
     extrapolateLeft: "clamp",
     extrapolateRight: "clamp",
     easing: FOCUS_EASING,
-  });
+  } as const;
+
+  const frames = stops.map((k) => k.f);
+  const scale = interpolate(frame, frames, stops.map((k) => k.s), ramp);
+
+  // The AIM is interpolated too, not just the zoom. Interpolating the focus
+  // point and deriving the transform from it (rather than interpolating two
+  // finished transforms) is what keeps the subject glued to the middle of the
+  // travel instead of sliding through it.
+  const focusX = interpolate(frame, frames, stops.map((k) => k.x), ramp);
+  const focusY = interpolate(frame, frames, stops.map((k) => k.y), ramp);
 
   // What may move is bounded by whichever is SMALLER: the painted picture or
   // the element box that clips it.
@@ -173,8 +215,8 @@ function computeFocusTransform(
     return Math.max(Math.min(desiredPx, maxPx), -maxPx);
   };
 
-  const x = clampToCoverableOverflow(-scale * (focus.x - 0.5) * drawnW, drawnW, frameW);
-  const y = clampToCoverableOverflow(-scale * (focus.y - 0.5) * drawnH, drawnH, frameH);
+  const x = clampToCoverableOverflow(-scale * (focusX - 0.5) * drawnW, drawnW, frameW);
+  const y = clampToCoverableOverflow(-scale * (focusY - 0.5) * drawnH, drawnH, frameH);
 
   return `translate(${x}px, ${y}px) scale(${scale})`;
 }
@@ -328,14 +370,16 @@ const CoverMedia: React.FC<{
   zoomVariant: ZoomVariant;
   assetWidth?: number;
   assetHeight?: number;
-  focus?: FocusPoint;
+  focus?: FocusPoint[];
   durationInFrames: number;
 }> = ({ assetPath, assetType, effect, direction, zoomVariant, assetWidth, assetHeight, focus, durationInFrames }) => {
   const frame = useCurrentFrame();
   const { width, height } = useVideoConfig();
 
   // An aimed push outranks the aspect-ratio-chosen effect, including pan.
-  if (!focus && effect === "pan" && assetWidth && assetHeight) {
+  const hasFocus = focus && focus.length > 0;
+
+  if (!hasFocus && effect === "pan" && assetWidth && assetHeight) {
     return (
       <PanMedia
         assetPath={assetPath}
@@ -358,8 +402,8 @@ const CoverMedia: React.FC<{
   const paintedW = coverScale ? assetWidth! * coverScale : width;
   const paintedH = coverScale ? assetHeight! * coverScale : height;
 
-  const transform = focus
-    ? computeFocusTransform(focus, frame, durationInFrames, paintedW, paintedH, width, height)
+  const transform = hasFocus
+    ? computeFocusTransform(focus!, frame, durationInFrames, paintedW, paintedH, width, height)
     : computeTransform(effect, direction, zoomVariant, frame, durationInFrames, width, height, true);
   const src = staticFile(assetPath);
 
@@ -392,7 +436,7 @@ const ContainBlurPad: React.FC<{
   effect: Effect;
   direction: Direction;
   zoomVariant: ZoomVariant;
-  focus?: FocusPoint;
+  focus?: FocusPoint[];
   assetWidth?: number;
   assetHeight?: number;
   durationInFrames: number;
@@ -410,7 +454,7 @@ const ContainBlurPad: React.FC<{
   const paintedW = containScale ? assetWidth! * containScale : width;
   const paintedH = containScale ? assetHeight! * containScale : height;
 
-  const transform = focus
+  const transform = focus && focus.length > 0
     ? computeFocusTransform(focus, frame, durationInFrames, paintedW, paintedH, width, height)
     : effect === "passthrough"
       ? "none"
