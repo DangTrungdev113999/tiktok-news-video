@@ -117,12 +117,61 @@ export function classifyAsset(probe, occurrence = { landscape: 0, portrait: 0, s
   return { effect: 'zoom', zoomVariant: 'in', fit: 'cover' };
 }
 
+// Karaoke caption line-chunking: keep lines short enough to read at a glance
+// and to fit 1080px width at the caption font size (see Captions.tsx).
+const CAPTION_MAX_WORDS_PER_LINE = 5;
+const CAPTION_MAX_CHARS_PER_LINE = 28;
+
+/**
+ * Group a scene's word-level timing into short on-screen caption lines
+ * (never longer than CAPTION_MAX_WORDS_PER_LINE words or
+ * CAPTION_MAX_CHARS_PER_LINE characters), converting seconds to absolute
+ * composition frames. Words are absolute-to-audio seconds (see
+ * tts-elevenlabs.mjs / align-audio.mjs's `words` output) -- since the
+ * narration track always plays from frame 0, `startSec * fps` IS the
+ * absolute frame, independent of any gap-closing applied to the scene's own
+ * Sequence duration.
+ * @param {Array<{text:string, startSec:number, endSec:number}>} words
+ * @returns {import('../remotion/src/spec-types.js').CaptionLine[]}
+ */
+function chunkWordsIntoCaptionLines(words) {
+  const lines = [];
+  let current = [];
+  let currentChars = 0;
+
+  for (const w of words) {
+    const wouldOverflow =
+      current.length >= CAPTION_MAX_WORDS_PER_LINE ||
+      (current.length > 0 && currentChars + 1 + w.text.length > CAPTION_MAX_CHARS_PER_LINE);
+    if (current.length > 0 && wouldOverflow) {
+      lines.push(current);
+      current = [];
+      currentChars = 0;
+    }
+    current.push(w);
+    currentChars += (current.length > 1 ? 1 : 0) + w.text.length;
+  }
+  if (current.length > 0) lines.push(current);
+
+  return lines.map((lineWords) => ({
+    words: lineWords.map((w) => ({
+      text: w.text,
+      startFrame: Math.round(w.startSec * FPS),
+      endFrame: Math.round(w.endSec * FPS),
+    })),
+    startFrame: Math.round(lineWords[0].startSec * FPS),
+    endFrame: Math.round(lineWords[lineWords.length - 1].endSec * FPS),
+  }));
+}
+
 /**
  * @param {object} args
- * @param {Array<{assetFilename: string, startSec: number, endSec: number}>} args.scenes
+ * @param {Array<{assetFilename: string, startSec: number, endSec: number, isHook?: boolean, hookHeadline?: string, words?: Array<{text:string,startSec:number,endSec:number}>}>} args.scenes
  *   One entry per scene, in order. `assetFilename` is relative to `assets/`
  *   (e.g. "hop-bao.jpg"). `startSec`/`endSec` come from tts-elevenlabs.mjs's
- *   or align-audio.mjs's `timings[]` (same shape from both).
+ *   or align-audio.mjs's `timings[]` (same shape from both). `words` (same
+ *   source's `words[i]`) drives karaoke captions -- omit or pass `isHook:
+ *   true` to exclude a scene (normally the hook/cover scene) from captions.
  * @param {string} args.workspaceDir - absolute path to the user's workspace
  *   folder (holds assets/, bgm-library/, output/ -- NOT the plugin's own
  *   code directory, which may live in a version-pinned plugin cache that
@@ -130,16 +179,38 @@ export function classifyAsset(probe, occurrence = { landscape: 0, portrait: 0, s
  * @param {string} [args.narrationAudioPath] - path relative to workspaceDir.
  * @param {string} [args.bgmAudioPath] - path relative to workspaceDir.
  * @param {number} [args.bgmVolume] - defaults to 0.25 per the house spec.
+ * @param {import('../remotion/src/spec-types.js').BrandKit} [args.brandKit] -
+ *   required if any scene sets isHook: true (the hook-card overlay needs it).
  * @returns {Promise<import('../remotion/src/spec-types.js').VideoSpec>}
  */
-export async function buildSpec({ scenes, workspaceDir, narrationAudioPath, bgmAudioPath, bgmVolume }) {
+/**
+ * Extend each scene's `endSec` to the next scene's `startSec`, closing the
+ * small natural-speech-pause gaps real TTS/alignment timing leaves between
+ * scenes (unlike mock mode's naive even-split, which never produces gaps).
+ * Necessary because each scene renders as a Remotion `<Sequence from=
+ * startFrame durationInFrames=...>` -- any frame range not covered by a
+ * Sequence renders as a black flash (bare AbsoluteFill background). Only the
+ * last scene keeps its own `endSec`. `words[]` (if present) is passed
+ * through untouched -- captions must track real speech, not the extended
+ * hold.
+ */
+function closeTimingGaps(scenes) {
+  return scenes.map((scene, i) => ({
+    ...scene,
+    endSec: i < scenes.length - 1 ? scenes[i + 1].startSec : scene.endSec,
+  }));
+}
+
+export async function buildSpec({ scenes, workspaceDir, narrationAudioPath, bgmAudioPath, bgmVolume, brandKit }) {
   if (!Array.isArray(scenes) || scenes.length === 0) {
     throw new Error('buildSpec requires a non-empty scenes[] array');
   }
+  scenes = closeTimingGaps(scenes);
 
   const occurrence = { landscape: 0, portrait: 0, square: 0 };
   const sceneSpecs = [];
   const missingAssets = [];
+  const captionLines = [];
 
   for (const scene of scenes) {
     const assetAbsPath = path.resolve(workspaceDir, 'assets', scene.assetFilename);
@@ -175,9 +246,18 @@ export async function buildSpec({ scenes, workspaceDir, narrationAudioPath, bgmA
       ...(direction ? { direction } : {}),
       ...(zoomVariant ? { zoomVariant } : {}),
       fit,
+      assetWidth: probe.width,
+      assetHeight: probe.height,
       startFrame,
       durationInFrames,
+      ...(scene.isHook ? { isHook: true, hookHeadline: scene.hookHeadline } : {}),
     });
+
+    // Karaoke captions: every scene EXCEPT the hook scene (it gets the
+    // hook-card overlay with its own static headline instead).
+    if (!scene.isHook && Array.isArray(scene.words) && scene.words.length > 0) {
+      captionLines.push(...chunkWordsIntoCaptionLines(scene.words));
+    }
   }
 
   if (missingAssets.length > 0) {
@@ -198,6 +278,13 @@ export async function buildSpec({ scenes, workspaceDir, narrationAudioPath, bgmA
   if (bgmAudioPath) {
     spec.bgmAudioPath = bgmAudioPath;
     spec.bgmVolume = bgmVolume ?? DEFAULT_BGM_VOLUME;
+  }
+  if (captionLines.length > 0) spec.captions = captionLines;
+  if (sceneSpecs.some((s) => s.isHook)) {
+    if (!brandKit) {
+      throw new Error('buildSpec: a scene has isHook: true but no brandKit was provided (hookBgPath/logoPath).');
+    }
+    spec.brandKit = brandKit;
   }
   return spec;
 }

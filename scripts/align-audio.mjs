@@ -235,6 +235,22 @@ function matchWordsToScenes(transcriptWords, sceneTexts) {
   return spans;
 }
 
+/**
+ * Slice per-scene word-level timing out of the full transcript, for karaoke
+ * captions. Timestamps are absolute seconds within the provided audio (the
+ * same timeline the narration track plays from frame 0), NOT gap-closed like
+ * `timings` — captions must track real speech, not an extended scene hold.
+ * @returns {Array<Array<{text:string,startSec:number,endSec:number}>>}
+ */
+function extractWordsFromSpans(transcriptWords, spans) {
+  return spans.map(({ startIdx, endIdx }) =>
+    transcriptWords
+      .slice(startIdx, endIdx + 1)
+      .map((w) => ({ text: w.word, startSec: round3(w.start), endSec: round3(w.end) }))
+      .filter((w) => w.text.length > 0)
+  );
+}
+
 function round3(n) {
   return Math.round(n * 1000) / 1000;
 }
@@ -315,7 +331,9 @@ function mockTimingsFromDuration(sceneTexts, totalDurationSec) {
  * @param {object} [opts]
  * @param {boolean} [opts.mock]
  * @param {string} [opts.apiKey]
- * @returns {Promise<{ timings: Array<{startSec:number,endSec:number}>, mode: 'live'|'mock' }>}
+ * @returns {Promise<{ timings: Array<{startSec:number,endSec:number}>, words: Array<Array<{text:string,startSec:number,endSec:number}>>, mode: 'live'|'mock' }>}
+ *   `words` is one array per scene (same order/length as `timings`) — empty
+ *   per-scene arrays in mock mode (no real transcript to slice words from).
  */
 export async function alignAudioToScenes(audioPath, sceneTexts, opts = {}) {
   if (!Array.isArray(sceneTexts) || sceneTexts.length === 0) {
@@ -336,17 +354,18 @@ export async function alignAudioToScenes(audioPath, sceneTexts, opts = {}) {
       `count per scene. NOT real forced alignment.`
     );
     const timings = mockTimingsFromDuration(texts, totalDurationSec);
-    return { timings, mode: 'mock' };
+    return { timings, words: texts.map(() => []), mode: 'mock' };
   }
 
   console.log('[align-audio] LIVE MODE — calling ElevenLabs Speech-to-Text (Scribe)');
-  const words = await transcribeWithTimestamps(audioPath, { apiKey, provider: 'elevenlabs' });
-  if (words.length === 0) {
+  const transcriptWords = await transcribeWithTimestamps(audioPath, { apiKey, provider: 'elevenlabs' });
+  if (transcriptWords.length === 0) {
     throw new Error('Transcription returned zero words — cannot align scenes to empty transcript');
   }
 
-  const spans = matchWordsToScenes(words, texts);
+  const spans = matchWordsToScenes(transcriptWords, texts);
   const timings = applyPadding(spans);
+  const words = extractWordsFromSpans(transcriptWords, spans);
 
   // Sanity check per design spec Section I: sum of scene durations should
   // roughly match total audio duration (±2s) — flag rather than silently
@@ -360,7 +379,7 @@ export async function alignAudioToScenes(audioPath, sceneTexts, opts = {}) {
     );
   }
 
-  return { timings, mode: 'live' };
+  return { timings, words, mode: 'live' };
 }
 
 // ---------------------------------------------------------------------------
@@ -387,17 +406,18 @@ if (isMain()) {
       })
   );
 
-  const [audioPath, sceneTextsPath, outTimingsPath] = positional;
+  const [audioPath, sceneTextsPath, outTimingsPath, outWordsPath] = positional;
   if (!audioPath || !sceneTextsPath || !outTimingsPath) {
-    console.error('Usage: node scripts/align-audio.mjs <audio.mp3> <sceneTexts.json> <outTimings.json> [--mock]');
+    console.error('Usage: node scripts/align-audio.mjs <audio.mp3> <sceneTexts.json> <outTimings.json> [outWords.json] [--mock]');
     process.exit(1);
   }
 
   const sceneTexts = JSON.parse(await readFile(path.resolve(sceneTextsPath), 'utf8'));
 
   alignAudioToScenes(path.resolve(audioPath), sceneTexts, { mock: Boolean(flags.mock) })
-    .then(async ({ timings, mode }) => {
+    .then(async ({ timings, words, mode }) => {
       await writeFile(path.resolve(outTimingsPath), JSON.stringify(timings, null, 2));
+      if (outWordsPath) await writeFile(path.resolve(outWordsPath), JSON.stringify(words, null, 2));
       console.log(`[align-audio] mode=${mode} timings=${outTimingsPath}`);
       console.log(JSON.stringify(timings, null, 2));
     })

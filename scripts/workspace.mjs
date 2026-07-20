@@ -58,7 +58,7 @@ export function getWorkspaceDir() {
 }
 
 export function ensureWorkspaceSubdirs(workspaceDir) {
-  for (const sub of ['assets', 'bgm-library', 'output']) {
+  for (const sub of ['assets', 'bgm-library', 'brand', 'output']) {
     fs.mkdirSync(path.join(workspaceDir, sub), { recursive: true });
   }
 }

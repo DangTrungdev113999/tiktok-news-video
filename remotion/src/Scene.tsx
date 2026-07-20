@@ -19,17 +19,31 @@ export interface SceneProps {
   direction?: Direction;
   zoomVariant?: ZoomVariant;
   fit: Fit;
+  /** Asset's natural pixel dimensions -- required for "pan" to compute its true crop overflow (see PanMedia). */
+  assetWidth?: number;
+  assetHeight?: number;
   durationInFrames: number;
 }
 
+// Legacy fallback only (used when assetWidth/assetHeight aren't present in an
+// older spec.json) -- see PanMedia below for the real, geometry-driven pan.
 const PAN_DRIFT_PCT = 0.06; // +/-6% of frame width
 const PAN_ZOOM_END = 1.08;
 
-const ZOOM_END = 1.12;
+// Real pan traversal: what fraction of the asset's TRUE cover-crop overflow
+// (computed from its natural dimensions, not a synthetic zoom-derived one) to
+// actually drift across. See PanMedia's doc comment for why this replaced
+// the old clampToAxisOverflow-bounded approach.
+const PAN_TRAVERSAL_FRACTION = 0.92;
+// Small extra push on top of the drift, purely cosmetic (the drift itself
+// carries the amplitude now, so this stays modest).
+const PAN_EXTRA_ZOOM_END = 1.06;
 
-const DIAGONAL_DRIFT_X_PCT = 0.04; // +/-4% of frame width
-const DIAGONAL_DRIFT_Y_PCT = 0.04; // +/-4% of frame height
-const DIAGONAL_ZOOM_END = 1.06;
+const ZOOM_END = 1.2;
+
+const DIAGONAL_DRIFT_X_PCT = 0.05; // +/-5% of frame width
+const DIAGONAL_DRIFT_Y_PCT = 0.05; // +/-5% of frame height
+const DIAGONAL_ZOOM_END = 1.08;
 
 // Rotating a cover-filled frame exposes corners unless the zoom compensates.
 // For a w x h frame rotated by theta, the minimum safe scale is
@@ -148,16 +162,94 @@ const FULL_BLEED_STYLE: CSSProperties = {
   height: "100%",
 };
 
+/**
+ * Real Ken Burns pan: sizes the image at its true STATIC cover scale (the
+ * scale that makes it exactly touch the frame on the binding axis, computed
+ * from its actual natural dimensions -- e.g. a 16:9 photo binds on height,
+ * so it's genuinely ~1.78x wider than the 1080px frame). That real width is
+ * where the pan traverses; a small extra zoom rides on top for a cosmetic
+ * push, but the drift itself is untouched by that zoom, so the traversal
+ * range stays true to the source image and doesn't shrink to fit whatever
+ * the zoom's own overflow happens to be.
+ *
+ * (Why this replaced the old approach: `clampToAxisOverflow` bounds translate
+ * by the overflow a GIVEN SCALE creates on a 100%-sized element -- at
+ * PAN_ZOOM_END=1.08 that's only ~3.4% of frame width, regardless of how wide
+ * the source image actually is. That's the right clamp for square-ish
+ * diagonal/rotate, where real cover overflow genuinely is near-zero -- but
+ * for a landscape photo with ~68% real crop overflow, it left almost all of
+ * that overflow unused. Sizing the element at its own true cover scale up
+ * front removes that mismatch entirely.)
+ */
+const PanMedia: React.FC<{
+  assetPath: string;
+  assetType: AssetType;
+  direction: Direction;
+  assetWidth: number;
+  assetHeight: number;
+  durationInFrames: number;
+}> = ({ assetPath, assetType, direction, assetWidth, assetHeight, durationInFrames }) => {
+  const frame = useCurrentFrame();
+  const { width, height } = useVideoConfig();
+  const endFrame = Math.max(durationInFrames - 1, 1);
+  const sign = direction === "left" ? 1 : -1;
+  const clamp = { extrapolateLeft: "clamp", extrapolateRight: "clamp", easing: MOTION_EASING } as const;
+
+  const coverScale0 = Math.max(width / assetWidth, height / assetHeight);
+  const scaledW0 = assetWidth * coverScale0;
+  const scaledH0 = assetHeight * coverScale0;
+  const overflowX0 = Math.max(scaledW0 - width, 0);
+  const maxOffsetX = (overflowX0 / 2) * PAN_TRAVERSAL_FRACTION;
+
+  const scale = interpolate(frame, [0, endFrame], [1, PAN_EXTRA_ZOOM_END], clamp);
+  const x = interpolate(frame, [0, endFrame], [sign * maxOffsetX, -sign * maxOffsetX], clamp);
+
+  const style: CSSProperties = {
+    position: "absolute",
+    top: "50%",
+    left: "50%",
+    width: scaledW0,
+    height: scaledH0,
+    marginLeft: -scaledW0 / 2,
+    marginTop: -scaledH0 / 2,
+    transform: `translate(${x}px, 0px) scale(${scale})`,
+    transformOrigin: "center center",
+    objectFit: "cover",
+  };
+
+  const src = staticFile(assetPath);
+  if (assetType === "video") {
+    return <MediaVideo src={src} style={style} objectFit="cover" loop muted />;
+  }
+  return <Img src={src} style={style} />;
+};
+
 const CoverMedia: React.FC<{
   assetPath: string;
   assetType: AssetType;
   effect: Effect;
   direction: Direction;
   zoomVariant: ZoomVariant;
+  assetWidth?: number;
+  assetHeight?: number;
   durationInFrames: number;
-}> = ({ assetPath, assetType, effect, direction, zoomVariant, durationInFrames }) => {
+}> = ({ assetPath, assetType, effect, direction, zoomVariant, assetWidth, assetHeight, durationInFrames }) => {
   const frame = useCurrentFrame();
   const { width, height } = useVideoConfig();
+
+  if (effect === "pan" && assetWidth && assetHeight) {
+    return (
+      <PanMedia
+        assetPath={assetPath}
+        assetType={assetType}
+        direction={direction}
+        assetWidth={assetWidth}
+        assetHeight={assetHeight}
+        durationInFrames={durationInFrames}
+      />
+    );
+  }
+
   // true: this media is object-fit: cover, so there is a real crop edge --
   // clamp translate to the overflow actually available.
   const transform = computeTransform(effect, direction, zoomVariant, frame, durationInFrames, width, height, true);
@@ -245,6 +337,8 @@ export const Scene: React.FC<SceneProps> = ({
   direction,
   zoomVariant,
   fit,
+  assetWidth,
+  assetHeight,
   durationInFrames,
 }) => {
   const resolvedDirection: Direction = direction ?? "left";
@@ -270,6 +364,8 @@ export const Scene: React.FC<SceneProps> = ({
       effect={effect}
       direction={resolvedDirection}
       zoomVariant={resolvedZoomVariant}
+      assetWidth={assetWidth}
+      assetHeight={assetHeight}
       durationInFrames={durationInFrames}
     />
   );

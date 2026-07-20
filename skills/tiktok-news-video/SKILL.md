@@ -60,8 +60,15 @@ WORKSPACE_DIR = config.local.json's `workspaceDir` field — a normal, visible
               ~/Desktop/tiktok-news-video-workspace). Contains:
                 $WORKSPACE_DIR/assets/         user's reusable image/video library
                 $WORKSPACE_DIR/bgm-library/    saved BGM tracks
+                $WORKSPACE_DIR/brand/          hook-card brand assets (hook-bg.jpg, logo.jpg)
                 $WORKSPACE_DIR/output/         rendered videos, <dated-slug>/ per run
 ```
+
+`config.local.json`'s `brandKit` field (`{hookBgPath, logoPath}`, set once via
+`scripts/brand-kit.mjs set <hookBgSource> <logoSource>`) is what makes the
+hook-card overlay (Step 6) possible — if it's missing when you reach a hook
+scene, ask the user for their brand assets once and save them with that
+script rather than skipping the hook card silently.
 
 Every script that touches assets/bgm-library/output/config takes
 `workspaceDir` as an explicit argument (never infers it from its own
@@ -112,17 +119,26 @@ rest. Lock in final `scenes[].finalText` before continuing.
 - **User has an MP3** → run `scripts/align-audio.mjs` with the audio path +
   ordered `finalText` array → get `{startSec, endSec}` per scene (forced
   alignment, NOT transcribe-then-fuzzy-match — see the knowledge doc for why
-  that distinction matters for Vietnamese).
+  that distinction matters for Vietnamese) AND `words[]` per scene (same call
+  — word-level timing for Step 6's karaoke captions).
 - **No MP3** → build `ttsText` per scene (add ElevenLabs v3 audio tags per
   `$CODE_ROOT/knowledge/elevenlabs-v3-tts.md`'s selection method — sparse,
   action-adjacent, matched to each scene's rhetorical role) → run
   `scripts/tts-elevenlabs.mjs` with the scenes + `voiceId` from
   `$CONFIG_FILE` + the API key from `~/.tiktok-news-video/.env` → get the
-  synthesized narration file AND `{startSec, endSec}` per scene from the
-  same call (no separate alignment step needed for this path).
+  synthesized narration file AND `{startSec, endSec}` **and `words[]`** per
+  scene from the same call (no separate alignment step needed for this
+  path). Keep this `words[]` — it's what drives captions in Step 6; don't
+  discard it after computing scene timings.
 - Either way, sanity-check: sum of `(endSec - startSec)` across scenes should
   roughly match the full audio duration (±2s). If it doesn't, that's a bug to
   fix (re-check the alignment/tag-stripping), not something to silently ship.
+- Note: natural speech pauses leave small gaps between one scene's `endSec`
+  and the next scene's `startSec` — `build-spec.mjs`'s `buildSpec()` closes
+  these automatically (extends each scene's hold through to the next scene's
+  real start) before converting to frames, so you don't need to do this by
+  hand. `words[]` timing is left untouched by that close (captions must track
+  real speech, not the extended hold) — just pass `words[]` straight through.
 
 ## Step 5 — BGM (ONE user pause)
 
@@ -134,21 +150,40 @@ proceed without it (no `bgmAudioPath` in the spec). BGM always mixes at a
 constant 25% volume, no ducking, looped to the full video length — never
 ask about volume, that's fixed by the design spec.
 
-## Step 6 — Classify assets and build `spec.json`
+## Step 6 — Classify assets, mark the hook scene, and build `spec.json`
 
 For each scene's asset, run `scripts/probe-asset.mjs` to get
-`{type, width, height}`. Apply the classification table in
-`$CODE_ROOT/knowledge/effect-catalog.md` exactly (landscape→pan, portrait→zoom,
-square-ish→diagonal, video→passthrough; contain-blur-pad override when
-cropping would lose too much or the asset is a non-9:16 video). Alternate pan
-direction by scene index for landscape scenes specifically (not globally
-across all scene types).
+`{type, width, height}` (also used by `build-spec.mjs` for pan's real
+crop-overflow traversal — see the knowledge doc). Apply the classification
+table in `$CODE_ROOT/knowledge/effect-catalog.md` exactly (landscape→pan,
+portrait→zoom, square-ish→diagonal, video→passthrough; contain-blur-pad
+override when cropping would lose too much or the asset is a non-9:16
+video). Alternate pan direction by scene index for landscape scenes
+specifically (not globally across all scene types).
+
+**Hook scene:** scene index 0 gets `isHook: true` plus a `hookHeadline`.
+Default `hookHeadline` to that scene's OWN final (rewritten) narration text,
+rendered ALL-CAPS by the component — this is "the hook" the user is already
+saying in scene 1, not a separately-invented stat headline; do not craft a
+new sentence here unless the user explicitly asks for a different one. The
+hook scene is excluded from karaoke captions (Step 4's `words[]` for that
+scene is simply not passed to `buildSpec` — see below); it gets the
+hook-card overlay instead (gradient card + brand logo + the headline,
+rendered by `HookCard.tsx`). If
+`$CONFIG_FILE`'s `brandKit` field is missing, ask the user for their two
+brand assets (a bottom-card background image + a logo) once and save them
+via `scripts/brand-kit.mjs set <hookBgSource> <logoSource>` — this is a
+one-time setup per machine, not a per-video question.
 
 Convert each scene's `{startSec, endSec}` (from Step 4) into
-`{startFrame, durationInFrames}` at 30fps. Call `buildSpecToFile` from
-`scripts/build-spec.mjs` with `workspaceDir: <WORKSPACE_DIR>` (from
-`$CONFIG_FILE`) — it resolves `assets/<assetFilename>` against that
-workspace and returns the full `spec.json` shape Remotion expects.
+`{startFrame, durationInFrames}` at 30fps — `buildSpec` does the gap-closing
+itself (see Step 4's note), so pass the raw per-scene timing straight
+through. Call `buildSpecToFile` from `scripts/build-spec.mjs` with
+`workspaceDir: <WORKSPACE_DIR>` (from `$CONFIG_FILE`), each scene's `words[]`
+(omit for the hook scene), `isHook`/`hookHeadline` on the hook scene, and
+`brandKit` from `$CONFIG_FILE` — it resolves `assets/<assetFilename>`
+against that workspace, chunks `words[]` into karaoke caption lines, and
+returns the full `spec.json` shape Remotion expects.
 
 ## Step 7 — Render
 
@@ -171,8 +206,10 @@ one-line summary of what effects/BGM/voice were used.
 
 ## Explicit scope guard
 
-Do not add karaoke-style word-synced captions (alignment data here is used
-ONLY to size scene durations, never for on-screen text sync) — that was
-explicitly cut from this plugin's scope in the design spec. Do not build a
-visual Artifact/blur-reveal UI for script review — text-in-chat only. Do not
-add BGM ducking — constant 25% is the whole spec.
+Karaoke captions (Step 6) are in scope for every scene EXCEPT the hook scene
+— don't add per-word styling variety or a second caption style, the single
+`Captions.tsx` look is the whole spec. Do not build a visual
+Artifact/blur-reveal UI for script review — text-in-chat only. Do not add
+BGM ducking — constant 25% is the whole spec. Do not bake host-app UI chrome
+(search bars, play buttons, progress bars) into the hook-card overlay — that
+belongs to whatever app plays the video back, not to the video itself.

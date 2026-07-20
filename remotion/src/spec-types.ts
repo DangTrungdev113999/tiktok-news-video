@@ -35,10 +35,48 @@ export interface SceneSpec {
   /** Only meaningful for effect "zoom" -- push/pull alternation. Defaults to "in". */
   zoomVariant?: ZoomVariant;
   fit: Fit;
+  /**
+   * Asset's natural pixel dimensions (from probe-asset.mjs's ffprobe read).
+   * Required for "pan" -- the pan effect sizes the media element at its true
+   * static cover-scale from these dimensions so it can translate across the
+   * REAL crop overflow, instead of a synthetic zoom-derived one (see
+   * Scene.tsx's PanMedia for why this distinction matters). Optional for
+   * other effects, which don't need it.
+   */
+  assetWidth?: number;
+  assetHeight?: number;
   /** Absolute frame (at the composition's fps) this scene's Sequence starts at. */
   startFrame: number;
   /** How many frames this scene's Sequence lasts. */
   durationInFrames: number;
+  /**
+   * True for the scene that gets the hook-card overlay (gradient panel +
+   * brand logo + ALL-CAPS headline) instead of karaoke captions. At most one
+   * scene (normally scene index 0) should set this.
+   */
+  isHook?: boolean;
+  /** Headline text shown by the hook-card overlay. Only used when isHook is true. */
+  hookHeadline?: string;
+}
+
+/** One karaoke-caption word, timed in absolute composition frames (not scene-local). */
+export interface CaptionWord {
+  text: string;
+  startFrame: number;
+  endFrame: number;
+}
+
+/** One on-screen caption line (a few words shown together, one highlighted at a time). */
+export interface CaptionLine {
+  words: CaptionWord[];
+  startFrame: number;
+  endFrame: number;
+}
+
+/** Shared brand assets for the hook-card overlay. Paths relative to the repo root. */
+export interface BrandKit {
+  hookBgPath: string;
+  logoPath: string;
 }
 
 export interface VideoSpec {
@@ -52,6 +90,10 @@ export interface VideoSpec {
   /** 0..1, defaults to 0.25 (25%) per the house spec (no ducking). */
   bgmVolume?: number;
   scenes: SceneSpec[];
+  /** Karaoke caption lines, flattened across all non-hook scenes, absolute-frame timed. */
+  captions?: CaptionLine[];
+  /** Present only when a scene has isHook: true. */
+  brandKit?: BrandKit;
   // Index signature: Remotion's <Composition> constrains props to
   // Record<string, unknown>; every field above is still concretely typed
   // for consumers, this only satisfies that generic constraint.

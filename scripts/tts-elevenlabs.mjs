@@ -141,6 +141,42 @@ function findLastSpokenCharIndex(full, start, end) {
   return Math.max(i, start);
 }
 
+/**
+ * Derive word-level timing for one scene's [start, end) char range, for
+ * karaoke captions. Skips `[tag]` bracket groups entirely (they're delivery
+ * direction, never shown on screen) and splits on whitespace. Timestamps are
+ * absolute seconds within the full synthesized audio (same timeline the
+ * narration track plays from frame 0), NOT yet gap-closed/padded like the
+ * scene-level `timings` -- captions must track real speech, not a scene's
+ * extended hold duration.
+ * @returns {Array<{text: string, startSec: number, endSec: number}>}
+ */
+function extractWordsFromRange(full, start, end, starts, ends) {
+  const words = [];
+  let i = start;
+  while (i < end) {
+    while (i < end && /\s/.test(full[i])) i++;
+    if (i >= end) break;
+    if (full[i] === '[') {
+      const close = full.indexOf(']', i);
+      if (close === -1 || close >= end) break; // unclosed tag — bail, rest is unspoken
+      i = close + 1;
+      continue;
+    }
+    const wordStart = i;
+    while (i < end && !/\s/.test(full[i]) && full[i] !== '[') i++;
+    const wordEnd = i; // exclusive
+    if (wordEnd > wordStart) {
+      words.push({
+        text: full.slice(wordStart, wordEnd),
+        startSec: round3(starts[wordStart]),
+        endSec: round3(ends[wordEnd - 1]),
+      });
+    }
+  }
+  return words;
+}
+
 // ---------------------------------------------------------------------------
 // Live ElevenLabs call
 // ---------------------------------------------------------------------------
@@ -250,7 +286,11 @@ function round3(n) {
  * @param {string} [opts.voiceId]
  * @param {string} [opts.apiKey]
  * @param {boolean} [opts.mock]
- * @returns {Promise<{ audioPath: string, timings: Array<{startSec:number,endSec:number}>, mode: 'live'|'mock' }>}
+ * @returns {Promise<{ audioPath: string, timings: Array<{startSec:number,endSec:number}>, words: Array<Array<{text:string,startSec:number,endSec:number}>>, mode: 'live'|'mock' }>}
+ *   `words` is one array per scene (same order/length as `timings`), each
+ *   entry a word with absolute-to-audio {startSec, endSec} (NOT gap-closed
+ *   like `timings` -- see extractWordsFromRange's doc comment). Empty
+ *   per-scene arrays in mock mode (no real alignment to derive words from).
  */
 export async function synthesizeScript(scenes, opts = {}) {
   if (!Array.isArray(scenes) || scenes.length === 0) {
@@ -270,7 +310,7 @@ export async function synthesizeScript(scenes, opts = {}) {
     );
     const { timings, totalSec } = mockTimings(scenes);
     await generateSilentAudio(outAudioPath, totalSec);
-    return { audioPath: outAudioPath, timings, mode: 'mock' };
+    return { audioPath: outAudioPath, timings, words: scenes.map(() => []), mode: 'mock' };
   }
 
   console.log(`[tts-elevenlabs] LIVE MODE — calling ElevenLabs voice_id=${voiceId}, model=${MODEL_ID}`);
@@ -321,6 +361,7 @@ export async function synthesizeScript(scenes, opts = {}) {
   // Derive per-scene timings from the character offsets recorded while
   // building the concatenated string.
   const timings = [];
+  const words = [];
   let prevEnd = 0;
   for (const { start, end } of offsets) {
     const firstSpoken = findFirstSpokenCharIndex(full, start, end);
@@ -330,6 +371,7 @@ export async function synthesizeScript(scenes, opts = {}) {
     const t0 = Math.max(prevEnd, rawStart - PAD_BEFORE_SEC);
     const t1 = rawEnd + PAD_AFTER_SEC;
     timings.push({ startSec: round3(t0), endSec: round3(t1) });
+    words.push(extractWordsFromRange(full, start, end, starts, ends));
     prevEnd = t1;
   }
 
@@ -347,7 +389,7 @@ export async function synthesizeScript(scenes, opts = {}) {
     );
   }
 
-  return { audioPath: outAudioPath, timings, mode: 'live' };
+  return { audioPath: outAudioPath, timings, words, mode: 'live' };
 }
 
 // ---------------------------------------------------------------------------
@@ -374,10 +416,10 @@ if (isMain()) {
       })
   );
 
-  const [scenesPath, outAudioPath, outTimingsPath] = positional;
+  const [scenesPath, outAudioPath, outTimingsPath, outWordsPath] = positional;
   if (!scenesPath || !outAudioPath || !outTimingsPath) {
     console.error(
-      'Usage: node scripts/tts-elevenlabs.mjs <scenes.json> <outAudio.mp3> <outTimings.json> [--mock] [--voice-id=...]'
+      'Usage: node scripts/tts-elevenlabs.mjs <scenes.json> <outAudio.mp3> <outTimings.json> [outWords.json] [--mock] [--voice-id=...]'
     );
     process.exit(1);
   }
@@ -389,8 +431,9 @@ if (isMain()) {
     voiceId: flags['voice-id'],
     mock: Boolean(flags.mock),
   })
-    .then(async ({ audioPath, timings, mode }) => {
+    .then(async ({ audioPath, timings, words, mode }) => {
       await writeFile(path.resolve(outTimingsPath), JSON.stringify(timings, null, 2));
+      if (outWordsPath) await writeFile(path.resolve(outWordsPath), JSON.stringify(words, null, 2));
       console.log(`[tts-elevenlabs] mode=${mode} audio=${audioPath} timings=${outTimingsPath}`);
       console.log(JSON.stringify(timings, null, 2));
     })
