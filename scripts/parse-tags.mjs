@@ -198,10 +198,29 @@ export function parseAssetLine(line) {
  * empty value, which is how an optional-value key says "use the default").
  */
 export function parsePercent(value) {
-  const m = String(value ?? '').match(/(\d+(?:[.,]\d+)?)\s*%?/);
+  // Strip a `target ...` clause first: its marker can be a digit, and reading
+  // `zoom_in: target 1 trong x.jpg` as "1%" would silently produce no zoom.
+  const m = String(value ?? '').replace(TARGET_RE, ' ').match(/(\d+(?:[.,]\d+)?)\s*%?/);
   if (!m) return null;
   const n = Number(m[1].replace(',', '.'));
   return Number.isFinite(n) ? n / 100 : null;
+}
+
+/**
+ * `target 1 trong anh_1_des.jpg` inside a zoom value -- aim the push at a
+ * marker drawn on a description image. The marker is whatever the author wrote
+ * on the picture: `1`, `2`, `3` or `a`, `b`, `c`, it only has to be findable.
+ *
+ * Returns what the author wrote, NOT coordinates: turning a marker into x/y
+ * needs a look at both images, which happens at build time. See
+ * tags/focus-object.md.
+ */
+const TARGET_RE = /\btarget\s+([A-Za-z0-9]{1,3})\b(?:\s*(?:trong|tr\u00ean|in|of|@)\s*([^\s,|]+\.(?:jpe?g|png|webp)))?/i;
+
+export function parseTargetRef(value) {
+  const m = String(value ?? '').match(TARGET_RE);
+  if (!m) return null;
+  return { marker: m[1], ...(m[2] ? { descriptionImage: m[2] } : {}) };
 }
 
 const ANCHOR_RE = /\b(top|bottom|tren|tr[eê]n|d[uư][oơ]i|duoi)\b\s*(\d+(?:[.,]\d+)?)\s*%?/i;

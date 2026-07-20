@@ -159,6 +159,11 @@ export interface SceneSpec {
    * aspect ratio would have chosen.
    */
   focus?: FocusPoint[];
+  /**
+   * Run the aimed move backwards: start close on the point and pull back off
+   * it, instead of pushing in. Set by `zoom_out: 50%, target 1 ...`.
+   */
+  focusReverse?: boolean;
   /** Absolute frame (at the composition's fps) this scene's Sequence starts at. */
   startFrame: number;
   /** How many frames this scene's Sequence lasts. */

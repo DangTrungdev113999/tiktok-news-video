@@ -40,6 +40,7 @@ export const MainVideo: React.FC<VideoSpec> = ({
             assetWidth={scene.assetWidth}
             assetHeight={scene.assetHeight}
             focus={scene.focus}
+            focusReverse={scene.focusReverse}
             zoomTo={scene.zoomTo}
             slide={scene.slide}
             entrance={scene.entrance}

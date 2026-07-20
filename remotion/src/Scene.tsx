@@ -24,6 +24,8 @@ export interface SceneProps {
   assetHeight?: number;
   /** From a `focus_object:` tag -- one entry per subject, in time order. Replaces the effect with an aimed move. */
   focus?: FocusPoint[];
+  /** Run the aimed move backwards -- start close, pull back. From `zoom_out: ..., target N`. */
+  focusReverse?: boolean;
   /** The ZOOMED end of a "zoom" effect, from `zoom_in: 50%` / `zoom_out: 50%`. Defaults to ZOOM_END. */
   zoomTo?: number;
   /** Required for effect "slide" -- see LayeredMedia. */
@@ -193,12 +195,35 @@ function computeFocusTransform(
   drawnH: number,
   frameW: number,
   frameH: number,
+  reverse: boolean = false,
 ): string {
   const endFrame = Math.max(durationInFrames - 1, 1);
 
   // Keyframes: start wide on the first subject, then land on each target in
   // turn. Each move ENDS on its own cue frame and holds until the next one
   // starts travelling, so every subject is at rest exactly as they're named.
+  // A reversed single-target move (zoom_out aimed at a marker) starts CLOSE on
+  // the point and pulls back off it. Only meaningful for one target: a
+  // multi-target tour is a sequence of arrivals, and running it backwards would
+  // just be the same tour in the other order, which the author can write.
+  if (reverse && focus.length === 1) {
+    const t = focus[0];
+    const ramp = {
+      extrapolateLeft: "clamp",
+      extrapolateRight: "clamp",
+      easing: FOCUS_EASING,
+    } as const;
+    const scale = interpolate(frame, [0, endFrame], [Math.max(t.scale, 1), 1], ramp);
+    const clampBack = (desiredPx: number, painted: number, frameExtent: number) => {
+      const movable = Math.min(painted, frameExtent);
+      const maxPx = (Math.max(movable * scale - frameExtent, 0) / 2) * OVERFLOW_SAFETY;
+      return Math.max(Math.min(desiredPx, maxPx), -maxPx);
+    };
+    const bx = clampBack(-scale * (t.x - 0.5) * drawnW, drawnW, frameW);
+    const by = clampBack(-scale * (t.y - 0.5) * drawnH, drawnH, frameH);
+    return `translate(${bx}px, ${by}px) scale(${scale})`;
+  }
+
   const stops: Array<{ f: number; x: number; y: number; s: number }> = [
     { f: 0, x: focus[0].x, y: focus[0].y, s: 1 },
   ];
@@ -621,9 +646,10 @@ const CoverMedia: React.FC<{
   assetWidth?: number;
   assetHeight?: number;
   focus?: FocusPoint[];
+  focusReverse?: boolean;
   zoomTo?: number;
   durationInFrames: number;
-}> = ({ assetPath, assetType, effect, direction, zoomVariant, assetWidth, assetHeight, focus, zoomTo, durationInFrames }) => {
+}> = ({ assetPath, assetType, effect, direction, zoomVariant, assetWidth, assetHeight, focus, focusReverse, zoomTo, durationInFrames }) => {
   const frame = useCurrentFrame();
   const { width, height } = useVideoConfig();
 
@@ -654,7 +680,7 @@ const CoverMedia: React.FC<{
   const paintedH = coverScale ? assetHeight! * coverScale : height;
 
   const transform = hasFocus
-    ? computeFocusTransform(focus!, frame, durationInFrames, paintedW, paintedH, width, height)
+    ? computeFocusTransform(focus!, frame, durationInFrames, paintedW, paintedH, width, height, focusReverse)
     : computeTransform(effect, direction, zoomVariant, frame, durationInFrames, width, height, true, zoomTo);
   const src = staticFile(assetPath);
 
@@ -688,11 +714,12 @@ const ContainBlurPad: React.FC<{
   direction: Direction;
   zoomVariant: ZoomVariant;
   focus?: FocusPoint[];
+  focusReverse?: boolean;
   zoomTo?: number;
   assetWidth?: number;
   assetHeight?: number;
   durationInFrames: number;
-}> = ({ assetPath, assetType, effect, direction, zoomVariant, focus, zoomTo, assetWidth, assetHeight, durationInFrames }) => {
+}> = ({ assetPath, assetType, effect, direction, zoomVariant, focus, focusReverse, zoomTo, assetWidth, assetHeight, durationInFrames }) => {
   const frame = useCurrentFrame();
   const { width, height } = useVideoConfig();
   // false: the foreground here is object-fit: contain over its own blurred
@@ -707,7 +734,7 @@ const ContainBlurPad: React.FC<{
   const paintedH = containScale ? assetHeight! * containScale : height;
 
   const transform = focus && focus.length > 0
-    ? computeFocusTransform(focus, frame, durationInFrames, paintedW, paintedH, width, height)
+    ? computeFocusTransform(focus, frame, durationInFrames, paintedW, paintedH, width, height, focusReverse)
     : effect === "passthrough"
       ? "none"
       : computeTransform(effect, direction, zoomVariant, frame, durationInFrames, width, height, false, zoomTo);
@@ -764,6 +791,7 @@ export const Scene: React.FC<SceneProps> = ({
   assetWidth,
   assetHeight,
   focus,
+  focusReverse,
   zoomTo,
   slide,
   entrance,
@@ -807,6 +835,7 @@ export const Scene: React.FC<SceneProps> = ({
         direction={resolvedDirection}
         zoomVariant={resolvedZoomVariant}
         focus={focus}
+        focusReverse={focusReverse}
         zoomTo={zoomTo}
         assetWidth={assetWidth}
         assetHeight={assetHeight}
@@ -825,6 +854,7 @@ export const Scene: React.FC<SceneProps> = ({
       assetWidth={assetWidth}
       assetHeight={assetHeight}
       focus={focus}
+      focusReverse={focusReverse}
       zoomTo={zoomTo}
       durationInFrames={durationInFrames}
     />

@@ -695,11 +695,24 @@ function expandScreensIntoShots(screens, warnings = []) {
       shots.push({
         ...rest,
         assetFilename: asset.filename,
-        ...(asset.focus ? { focus: asset.focus } : {}),
+        // `zoom_in: 50%, target 1 trong anh_1_des.jpg` is an AIMED zoom, which
+        // is the focus mechanism with a single point -- the skill resolves the
+        // marker to coordinates the same way, so it reuses that path rather
+        // than growing a second one. The percentage becomes the point's scale.
+        ...(asset.focus
+          ? { focus: asset.focus }
+          : asset.zoom && asset.zoom.aim
+            ? {
+                focus: [{ ...asset.zoom.aim, scale: 1 + (asset.zoom.amount ?? ZOOM_DEFAULT_AMOUNT) }],
+                // zoom_out starts close on the marker and pulls back off it.
+                ...(asset.zoom.variant === 'out' ? { focusReverse: true } : {}),
+              }
+            : {}),
         // Motion tags ride along per-asset; they are resolved against the
         // probe (a slide needs the picture's real dimensions) further down.
         ...(asset.fillFullScreen ? { fillFullScreen: true } : {}),
         ...(asset.zoom ? { zoom: asset.zoom } : {}),
+        ...(asset.zoom && asset.zoom.aim && asset.zoom.variant === 'out' ? { focusReverse: true } : {}),
         ...(asset.slide ? { slide: asset.slide } : {}),
         ...(asset.flipBook ? { flipBook: true } : {}),
         startSec: boundaries[i],
@@ -792,6 +805,7 @@ export async function buildSpec({ scenes, workspaceDir, narrationAudioPath, bgmA
       ...(scene.focus
         ? { focus: resolveFocusPeaks(scene.focus, startFrame, durationInFrames, scene.assetFilename, warnings) }
         : {}),
+      ...(scene.focusReverse ? { focusReverse: true } : {}),
       startFrame,
       durationInFrames,
       ...(scene.isHook ? { isHook: true, hookHeadline: scene.hookHeadline } : {}),
