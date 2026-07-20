@@ -54,6 +54,28 @@ write bespoke per-scene motion code. If a new movement is needed, it becomes a
 new named effect in the catalog + a branch in `computeTransform`, not a
 one-off component.
 
+### Every screen ends on a punch
+
+The last 0.25s of each screen pushes in ~12% and then cuts. It is automatic —
+not a tag — and it is on at every screen boundary, because this is feed video
+and a frame that sits still reads as the video having stalled.
+
+Three details that are load-bearing:
+
+- **It belongs to the SCREEN, not the shot.** A screen holding three images
+  punches once, on its last shot. Punching each shot reads as a stutter.
+- **The final screen gets none.** There is no cut for it to land on, and ending
+  mid-push looks like the file was clipped.
+- **It accelerates** (`PUNCH_EASING`, an ease-IN). An ease-out would do its
+  travel early and coast into the boundary, which reads as the shot sagging
+  rather than snapping.
+
+It is applied by `PunchWrapper` around whichever media component the shot
+chose, so it scales the whole composed frame — blurred backdrop, bands and all
+— in one implementation instead of three. Captions and the hook card sit
+outside `<Scene>` and deliberately do not punch: text that jumps at every cut
+is unreadable.
+
 ### The two exceptions, and the geometry that forces them
 
 `pan` and `slide` are **not** `computeTransform` branches. Both are still
