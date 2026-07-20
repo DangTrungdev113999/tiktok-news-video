@@ -41,6 +41,30 @@ without cutting the image.
 Insets that leave less than 15% of travel are clamped and reported: a slide
 with nowhere to go is a still frame that looks like a bug.
 
+#### The insets share a budget the picture may not have
+
+Only `1 − frameWidth / paintedWidth` of a picture is ever traversed, and both
+insets come out of that same span. A 674×502 photo traverses about **33% of
+its own width**, so `30% 50%` asks for 80% of a budget of 33% — impossible,
+not merely tight.
+
+`resolveSlideTag` narrows both insets by the same factor until they fit, keeps
+their ratio, and puts the real numbers in `spec.warnings`. **Report that
+warning**: the author asked for a strongly inset move and got a muted one, and
+a muted effect they weren't told about reads as a bug.
+
+Two details worth knowing, both learned the hard way on 2026-07-20:
+
+- **Before the clamp existed, over-large insets made `from` cross past `to` —
+  and `from > to` is exactly how the reversed variant is expressed.** A
+  `slide_left_right` silently travelled right-to-left. The guard that should
+  have caught it tested `Math.abs(to − from)`, and the absolute value threw
+  away the sign, which was the only thing wrong. Direction now falls out of
+  the arithmetic: both ends are built from one clamped pair.
+- The clamp leaves **twice** the 15% floor, not exactly the floor. Landing on
+  the floor trips the "barely moves" fallback below it, which discards the
+  insets and slides the full length — the opposite of what was written.
+
 ### `top 20%` — the vertical anchor
 
 By default the frame sits at the vertical centre of the image and stays there.

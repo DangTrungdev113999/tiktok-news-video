@@ -56,7 +56,7 @@ one-off component.
 
 ### Every screen ends on a punch
 
-The last 0.25s of each screen pushes in ~12% and then cuts. It is automatic —
+The last 0.8s of each screen pushes in ~8% and then cuts. It is automatic —
 not a tag — and it is on at every screen boundary, because this is feed video
 and a frame that sits still reads as the video having stalled.
 

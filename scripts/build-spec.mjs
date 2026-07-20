@@ -407,9 +407,12 @@ const SLIDE_FALLBACK_FILL = 1.3;
 // End-of-screen punch: a quick push into the cut, the punctuation that keeps a
 // feed video moving. Set at the author's request ("cuoi moi screen cho 1 hieu
 // ung chuyen canh don gian... tao nhip nhanh cho video").
-// Twice as long and a third less scale than the first attempt (0.25s / 1.12),
-// which the author found too abrupt. Growth per frame drops ~3x.
-const PUNCH_SEC = 0.5;
+// Lengthened twice on the author's word -- 0.25s -> 0.5s -> 0.8s -- each time
+// for the same reason: it "phut cai", it snapped. Scale stayed at 1.08 through
+// the second pass, so all the softening comes from spreading the SAME travel
+// over more frames. Peak growth is now ~1.9px/frame against 9.5 at 0.25s.
+// Anything shorter reads as a jump cut with a zoom stapled to it.
+const PUNCH_SEC = 0.8;
 const PUNCH_SCALE = 1.08;
 /** Keeps an entrance-only shot from being frozen when no zoom was asked for. */
 const ENTRANCE_IDLE_ZOOM = 1.08;
@@ -498,14 +501,43 @@ function resolveSlideTag(slide, probe, filename, fillFullScreen, warnings) {
   const toRange = (inset) =>
     traversable > 0 ? Math.min(Math.max(inset / traversable, 0), 1) : 0;
 
+  // Both insets eat into the SAME range, so they can ask for more than exists:
+  // a 1.34:1 picture only traverses a third of its own width, which caps the
+  // two insets at ~28% combined. Past that the naive from/to CROSS OVER, and
+  // since `from > to` is how the reversed variant is expressed, a
+  // `slide_left_right` silently starts travelling right-to-left. Clamping in
+  // range space keeps the requested ratio between the two insets and, because
+  // both ends are built from the same clamped pair, makes the direction fall
+  // out of the arithmetic instead of being asserted separately.
+  let r0 = toRange(startInset);
+  let r1 = toRange(endInset);
+  // Twice the floor, not the floor itself: clamping to exactly SLIDE_MIN_TRAVEL
+  // lands on the wrong side of the `< SLIDE_MIN_TRAVEL` check below (floating
+  // point alone is enough), which discards the insets entirely and slides the
+  // full length -- the author asked for an inset move and would get the
+  // opposite. Leaving room keeps a muted version of what they wrote.
+  const budget = 1 - 2 * SLIDE_MIN_TRAVEL;
+  if (r0 + r1 > budget) {
+    const k = budget / (r0 + r1);
+    warnings.push(
+      `${filename}: insets of ${Math.round(startInset * 100)}%/${Math.round(endInset * 100)}% ` +
+      `ask for more than this picture can traverse (it is ${probe.width}x${probe.height}, so at ` +
+      `most ~${Math.round(traversable * 100)}% total) -- narrowed to ` +
+      `${Math.round(r0 * k * traversable * 100)}%/${Math.round(r1 * k * traversable * 100)}%, ` +
+      `so the shot moves less than asked.`
+    );
+    r0 *= k;
+    r1 *= k;
+  }
+
   let from;
   let to;
   if (startsCentred) {
     from = 0.5;
     to = 1;
   } else {
-    from = forward ? toRange(startInset) : 1 - toRange(startInset);
-    to = forward ? 1 - toRange(endInset) : toRange(endInset);
+    from = forward ? r0 : 1 - r0;
+    to = forward ? 1 - r1 : r1;
   }
 
   const overflowPx = paintedAlong - frameAlong;
