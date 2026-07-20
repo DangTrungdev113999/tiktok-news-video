@@ -91,10 +91,19 @@ export const HEADLINE = {
   /** Step down through these if the text would need more than `maxLines`. */
   fontSizeSteps: [54, 48, 44],
   /**
-   * 4 lines at 54px puts the block's top at y1288, still clear of the badge's
-   * bottom edge (1185 + 90 = 1275). A 5th line would collide.
+   * 3, matching the reference frames. This is a budget, not a hard clamp:
+   * a headline too long even at the smallest step still renders, growing
+   * upward (the block is bottom-anchored) rather than down into TikTok's
+   * covered band.
+   *
+   * Measured headroom: a 177-character headline steps down to 44px and
+   * renders FIVE lines, topping out at y1295 -- still 20px clear of the
+   * badge's bottom edge (1185 + 90 = 1275). Beyond roughly 210 characters a
+   * sixth line would start overlapping the badge. That is far past any
+   * sensible spoken hook (the headline is scene 1's narration line), so it
+   * is documented rather than defended against.
    */
-  maxLines: 4,
+  maxLines: 3,
 } as const;
 
 /** Karaoke captions: same family and same size as the headline, by design. */
@@ -112,13 +121,17 @@ export const CAPTION = {
 } as const;
 
 /**
- * Rough advance width of one uppercase Oswald-700 glyph, as a fraction of the
- * font size. Used ONLY by `fitHeadlineFontSize` as a safety net for
- * pathologically long headlines -- deliberately on the wide side so the
- * estimate errs toward shrinking early rather than overflowing. Not used for
- * any layout the user actually sees at normal headline lengths.
+ * Average advance width of one uppercase Oswald-700 glyph (spaces included),
+ * as a fraction of the font size. Used ONLY by `fitHeadlineFontSize`.
+ *
+ * MEASURED, not guessed: two rendered headline rows at fontSize 54 came out
+ * at 754px / 29 chars = 0.481em and 706px / 27 chars = 0.484em. Rounded UP to
+ * 0.50 on purpose -- an over-wide estimate under-counts how many characters
+ * fit per line, so it over-counts lines and errs toward shrinking a size
+ * early. Under-estimating would be the dangerous direction: the block is
+ * bottom-anchored, so an un-shrunk headline grows UPWARD toward the badge.
  */
-const AVG_UPPERCASE_CHAR_EM = 0.45;
+const AVG_UPPERCASE_CHAR_EM = 0.5;
 
 /**
  * Pick the largest headline font size (from HEADLINE.fontSizeSteps) whose

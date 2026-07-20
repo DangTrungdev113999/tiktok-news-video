@@ -125,17 +125,31 @@ the reference puts it (top 1360, bottom 1577) for the typical 3-line headline.
 
 ## D. Long-headline safety net
 
-Bottom-anchoring handles overflow *downward*, but a 5-line headline would grow
-*upward* into the badge (badge bottom = 1185 + 90 = 1275; a 5-line block's top
-would be 1215). `fitHeadlineFontSize()` steps the font down through 54 → 48 →
-44 until the estimated line count fits `maxLines: 4`.
+Bottom-anchoring handles overflow *downward*, but a long headline grows
+*upward* toward the badge (badge box bottom = 1185 + 90 = 1275).
+`fitHeadlineFontSize()` steps the font down through 54 → 48 → 44 until the
+estimated line count fits `maxLines: 3` (the reference's own line count).
 
-The estimate is a character-count heuristic (`AVG_UPPERCASE_CHAR_EM = 0.45`,
-deliberately on the wide side so it errs toward shrinking early) rather than a
-DOM measurement. This keeps the component a pure function of its props, in
-line with this project's house rule that everything rendered is deterministic
-math over its inputs. The heuristic only ever engages for pathologically long
-headlines; at normal lengths the layout is exactly the measured one.
+The estimate is a character-count heuristic rather than a DOM measurement,
+keeping the component a pure function of its props in line with this
+project's house rule that everything rendered is deterministic math over its
+inputs.
+
+`AVG_UPPERCASE_CHAR_EM` was **measured, not guessed** — and getting this
+backwards was a real bug caught in review. Two rendered headline rows at
+fontSize 54 came out at 754px/29 chars = 0.481em and 706px/27 chars =
+0.484em. The constant is set to **0.50**, rounded *up*: an over-wide estimate
+under-counts characters per line, so it over-counts lines and shrinks early.
+Under-estimating is the dangerous direction — an un-shrunk headline grows
+upward into the badge. The original 0.45 was below the true 0.48 and would
+have failed exactly that way, while its comment claimed the opposite.
+
+Measured headroom, from an actual render rather than arithmetic: a
+177-character headline steps down to 44px and renders **five** lines, topping
+out at y1295 — still 20px clear of the badge box. Past roughly 210 characters
+a sixth line would begin to overlap. That is far beyond any sensible spoken
+hook (the headline is scene 1's own narration line), so it is documented
+rather than defended against.
 
 ## E. Caption chunking
 
@@ -167,6 +181,13 @@ to avoid picking up a bright photo background:
 - lowest glyph **y1563** < safe bottom 1629 ✓
 - rightmost glyph **x846** < safe right 886 ✓
 - measured line pitch **73px** vs the specified 54 × 1.34 = 72 ✓
+
+**Long-headline step-down** (`--frame=60` with a 177-character headline) —
+added after review pointed out that the step-down branch had never actually
+executed in the checks above:
+- measured line pitch **59px** → font stepped down to 44px ✓ (54 would be 72)
+- five lines, top glyph **y1295**, badge box bottom 1275 → 20px clear ✓
+- lowest glyph **y1564** < 1629 ✓, rightmost **x880** < 886 ✓
 
 ## G. Explicit scope cuts
 
