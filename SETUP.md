@@ -100,7 +100,7 @@ luôn chọn **Local** (xem lưu ý ở đầu file).
    Scene 1: [nội dung] — ảnh: hop-bao.jpg
    Scene 2: [nội dung] — video: phong-van.mp4
    ```
-3. Duyệt/sửa kịch bản đã được xào lại cho dễ hiểu khi được hỏi, phần còn lại
+3. Chọn nhạc nền khi được hỏi, phần còn lại
    (lồng tiếng, nhạc nền, hiệu ứng, render) tự động.
 
 `assets/`, `bgm-library/`, `output/` nằm trong **thư mục workspace** bạn chọn

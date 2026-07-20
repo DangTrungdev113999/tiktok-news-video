@@ -1,62 +1,52 @@
-# Steps 1–3 — Scene script: parse, rewrite, review
+# Step 1 — Scene script: parse the user's input
 
-## Step 1 — Parse the chat input
+## Parse the chat input
 
 `$ARGUMENTS` (or whatever the user pasted in chat) contains blocks like:
 
 ```
-Scene 1: [nội dung] — ảnh: hop-bao.jpg
-Scene 2: [nội dung] — video: phong-van.mp4
+Screen 1: [nội dung] — ảnh: hop-bao.jpg
+Screen 2: [nội dung] — video: phong-van.mp4
 ```
 
-Parse into `scenes[] = [{ index, text, assetFilename }]`.
+Parse into `screens[] = [{ index, text, assets[] }]`.
 
-For each `assetFilename`, verify the file exists under
-`$WORKSPACE_DIR/assets/` — if ANY are missing, stop here and list the missing
-filenames. This is the one validation that must block before doing any paid
-API work.
+**The user's text is the narration, verbatim.** Do not rewrite, tighten,
+re-order, or "improve" it. Do not add a `[NOTE: ...]` gloss. What the user
+typed is what gets spoken — this is the author's voice and the pipeline's job
+is to render it, not to edit it. (A house-style rewrite step existed until
+2026-07-20 and was deleted on the user's instruction: *"bỏ qua phần xào lại
+đã, xoá hẳn đi, tập trung vào input của user thôi"*.)
+
+The only text you may touch is `ttsText` — the ElevenLabs audio-tag markup
+built in Step 2 — and that changes delivery, never wording.
+
+For each filename, verify the file exists under `$WORKSPACE_DIR/assets/` — if
+ANY are missing, stop here and list the missing filenames. This is the one
+validation that must block before doing any paid API work.
 
 If the user separately mentions a video file wasn't embeddable in the doc but
-names it in the script, treat that name exactly like any other
-`assetFilename` — it must already be in `$WORKSPACE_DIR/assets/`.
+names it in the script, treat that name exactly like any other filename — it
+must already be in `$WORKSPACE_DIR/assets/`.
 
 Also ask (once, if not already clear from the message): does the user have a
 ready MP3 narration file, or should TTS generate it?
 
-### Per-asset tags
+## Several assets on one screen
 
-A filename may be followed by `|`-separated **tags** that override the
-automatic aspect-ratio classification for that one asset, and by a `(30%)`
-duration share. When no tag is present the asset falls back to automatic
-classification — an absent tag is never an error.
+A screen may hold several images/videos, and a filename may carry tags:
 
 ```
-anh_1.jpg (30%) | focus_object: nguoi thu 1 luc "su bin hoang son"
-anh_2.jpg
+Screen 3:
+anh_1.jpg (30%) | focus_object: người thứ 1 từ trái sang
+anh_2.jpg (70%)
+video_1.mp4
 ```
+
+`(30%)` is that asset's share of the screen's duration; absent means an even
+split. Tags override the automatic aspect-ratio classification for that one
+asset — absent tag is never an error.
 
 Read `tags/README.md` for the grammar and the table of implemented keys, then
 open the reference file for each key you actually meet. A key that is not in
 that table is **reported to the user, not guessed at**.
-
-## Step 2 — Script rewrite (house style)
-
-Apply `$CODE_ROOT/knowledge/script-rewrite-house-style.md` to every scene's
-`text`. Produce, per scene: original, rewritten, and the one-line reasoning
-for the framing chosen.
-
-This is content work — think about each scene, don't mechanically paraphrase.
-
-## Step 3 — Review (USER PAUSE #1)
-
-Show the rewrite in chat per the house-style doc's format (text only, no
-visual UI). Ask:
-
-> "Giữ bản xào lại này, hay bạn muốn sửa scene nào?"
-
-If the user pastes replacement text for specific scenes, use it verbatim for
-those scenes (do not rewrite on top of a user edit) and keep your rewrite for
-the rest. Lock in final `scenes[].finalText` before continuing.
-
-Do not build a visual Artifact/blur-reveal UI for script review — text in chat
-only.

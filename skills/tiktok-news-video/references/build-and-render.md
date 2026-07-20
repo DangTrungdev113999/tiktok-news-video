@@ -1,8 +1,8 @@
-# Steps 6–8 — Build the spec, render, report
+# Steps 4–6 — Build the spec, render, report
 
 ## Building `spec.json`
 
-Convert each scene's `{startSec, endSec}` (from Step 4) into
+Convert each scene's `{startSec, endSec}` (from Step 2) into
 `{startFrame, durationInFrames}` at 30fps. `buildSpec` does the gap-closing
 itself (see `narration-and-bgm.md`), so pass the raw per-scene timing straight
 through.
@@ -12,7 +12,7 @@ Call `buildSpecToFile` from `scripts/build-spec.mjs` with:
 | Argument | Value |
 |---|---|
 | `workspaceDir` | `$WORKSPACE_DIR` from `$CONFIG_FILE` |
-| `scenes[].words` | Step 4's word timing — **omit for the hook scene** |
+| `scenes[].words` | Step 2's word timing — **omit for the hook scene** |
 | `scenes[].isHook` / `hookHeadline` | on the hook scene only |
 | `brandKit` | the resolved brand object (see `hook-and-brand.md`) |
 | `narrationAudioPath` / `bgmAudioPath` | relative to `workspaceDir` |
@@ -31,7 +31,7 @@ the full `spec.json` shape Remotion expects.
 `buildSpec` refuses to build if any asset fails to probe — it throws listing
 every missing file rather than rendering a partially-broken video.
 
-## Step 7 — Render
+## Step 5 — Render
 
 Create the dated + slugged output folder first:
 
@@ -68,7 +68,7 @@ cd $CODE_ROOT/remotion && npx remotion still src/index.ts MainVideo <out.png> \
 Note that a `spec.json` from an older run may carry a stale `brandKit` shape
 and fail — resolve a fresh brand kit into it first.
 
-## Step 8 — Report
+## Step 6 — Report
 
 Tell the user:
 

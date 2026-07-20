@@ -57,9 +57,8 @@ run — read the relevant one before the step that uses it:
 
 | File | Read before |
 |---|---|
-| `knowledge/script-rewrite-house-style.md` | Step 2 (script rewrite) |
-| `knowledge/elevenlabs-v3-tts.md` | Step 4 (narration) |
-| `knowledge/effect-catalog.md` | Step 6 (motion classification) |
+| `knowledge/elevenlabs-v3-tts.md` | Step 2 (narration) |
+| `knowledge/effect-catalog.md` | Step 4 (motion classification) |
 
 `skills/tiktok-news-video/references/` (this folder) holds the *operational*
 detail for each pipeline step. `knowledge/` is the law; `references/` is the

@@ -4,13 +4,13 @@
 
 Scene index 0 gets `isHook: true` plus a `hookHeadline`.
 
-**Default `hookHeadline` to that scene's OWN final (rewritten) narration
-text**, rendered ALL-CAPS by the component. This is "the hook" the user is
+**Default `hookHeadline` to that screen's OWN narration text, verbatim**,
+rendered ALL-CAPS by the component. This is "the hook" the user is
 already saying in scene 1 — it is not a separately-invented stat headline. Do
 not craft a new sentence here unless the user explicitly asks for one. (This
 was tried and corrected on 2026-07-18.)
 
-The hook scene is **excluded from karaoke captions** — Step 4's `words[]` for
+The hook scene is **excluded from karaoke captions** — Step 2's `words[]` for
 that scene is simply not passed to `buildSpec`. It gets the hook-card overlay
 instead: gradient card + brand badge + the headline, rendered by
 `remotion/src/HookCard.tsx`.
@@ -26,7 +26,7 @@ video itself.
 
 For the card's typography and geometry, see `text-layout.md`.
 
-## Resolving the brand kit (CONDITIONAL USER PAUSE #3)
+## Resolving the brand kit (the conditional user pause)
 
 `$WORKSPACE_DIR/brand/<slug>/` holds one self-contained brand kit
 (`hook-bg.jpg` + `brand.json` — badge text and full color palette). Brands are
@@ -43,7 +43,7 @@ Call `listBrands(workspaceDir)` from `scripts/brand-kit.mjs`, then:
    a brand folder (with `hook-bg.jpg` + `brand.json`) into
    `$WORKSPACE_DIR/brand/<slug>/`. Do not render without one.
 3. **Exactly one valid brand** → use it automatically, no question asked. Note
-   which brand was used in the Step 8 report.
+   which brand was used in the Step 6 report.
 4. **Two or more valid brands** → ask the user to pick one, showing each
    `displayName`.
 

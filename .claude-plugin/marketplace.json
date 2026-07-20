@@ -8,7 +8,7 @@
     {
       "name": "tiktok-news-video",
       "source": ".",
-      "description": "Generate a TikTok-format (1080x1920) news video from user-supplied images/videos + a scene script typed in chat. Rewrites the script for zero-background-knowledge readability, resolves narration (user MP3 or ElevenLabs v3 TTS), auto-classifies each asset's motion (pan/zoom/passthrough) by aspect ratio, blur-pads anything that doesn't fill frame, mixes BGM at 25%, and renders end-to-end via Remotion.",
+      "description": "Generate a TikTok-format (1080x1920) news video from user-supplied images/videos + a scene script typed in chat. Speaks the user's scene text verbatim, resolves narration (user MP3 or ElevenLabs v3 TTS), auto-classifies each asset's motion (pan/zoom/passthrough) by aspect ratio, blur-pads anything that doesn't fill frame, mixes BGM at 25%, and renders end-to-end via Remotion.",
       "version": "0.1.0",
       "category": "content",
       "tags": ["video", "remotion", "tts", "tiktok", "vietnamese", "automation"]

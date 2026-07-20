@@ -20,7 +20,7 @@ copy-paste chi tiết ở **[SETUP.md](./SETUP.md)**. Phần dưới đây dành
    Scene 1: [nội dung] — ảnh: hop-bao.jpg
    Scene 2: [nội dung] — video: phong-van.mp4
    ```
-5. Agent sẽ xào lại kịch bản cho dễ hiểu, cho bạn duyệt/sửa, rồi tự động lo
+5. Agent đọc kịch bản của bạn nguyên văn, rồi tự động lo
    phần lồng tiếng (TTS ElevenLabs nếu bạn không có sẵn file mp3), nhạc nền,
    hiệu ứng ảnh/video, và render ra video hoàn chỉnh.
 

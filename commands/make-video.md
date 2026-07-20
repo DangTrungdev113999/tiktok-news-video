@@ -6,7 +6,7 @@ argument-hint: "[paste the scene script here, or leave empty and I'll ask]"
 # TikTok News Video: $ARGUMENTS
 
 You are the entry point. This command just collects input and hands off to the
-orchestrator skill — do NOT parse scenes, rewrite script, or render anything
+orchestrator skill — do NOT parse scenes or render anything
 yourself here.
 
 ## Step 0: First run on this machine?
