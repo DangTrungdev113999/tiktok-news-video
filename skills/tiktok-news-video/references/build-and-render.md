@@ -1,5 +1,19 @@
 # Steps 4–6 — Build the spec, render, report
 
+## Tags are RESOLVED here, not at Step 1
+
+Step 1 only parses the scene script — `scripts/parse-tags.mjs` reports what
+the author wrote and resolves nothing. Turning that into numbers happens
+**here**, because it needs things that don't exist until now:
+
+| To resolve | You need | Available from |
+|---|---|---|
+| a cut pinned to a spoken moment | word-level timing | Step 2 |
+| `focus_object` → coordinates | a look at the image | any time, but the reads belong with the rest of the build |
+
+So: parse at Step 1, resolve at Step 4, and never try to work out a cut point
+at parse time — there is nothing to time against yet.
+
 ## Building `spec.json`
 
 Convert each scene's `{startSec, endSec}` (from Step 2) into

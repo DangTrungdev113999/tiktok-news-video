@@ -98,11 +98,10 @@ function clampToAxisOverflow(desiredPx: number, scale: number, dimension: number
  *   a point at normalised position p lands at 0.5 + s*(p - 0.5) + t/size,
  *   so t = -s*(p - 0.5)*size puts it dead centre.
  *
- * That ideal is usually unreachable, so the translate is clamped to what the
- * picture can actually give on each axis: at most half of however much the
- * drawn image overflows the frame at the current scale. The subject ends up
- * large and as centred as the picture allows, and the image edge never drifts
- * inside the frame.
+ * That ideal is usually unreachable, so the translate is clamped to what can
+ * move without uncovering the frame (see clampToCoverableOverflow below). The
+ * subject ends up large and as centred as the picture allows, and no edge --
+ * blurred sliver or black band -- ever drifts into view.
  *
  * `drawnW`/`drawnH` are the size the image is actually PAINTED at, which is
  * not the frame size and not the file's pixel size:
@@ -139,13 +138,23 @@ function computeFocusTransform(
     easing: MOTION_EASING,
   });
 
-  const clampToPaintedOverflow = (desiredPx: number, painted: number, frameExtent: number) => {
-    const maxPx = (Math.max(painted * scale - frameExtent, 0) / 2) * OVERFLOW_SAFETY;
+  // What may move is bounded by whichever is SMALLER: the painted picture or
+  // the element box that clips it.
+  //   blur-pad -> painted < frame, the picture itself runs out first
+  //   cover    -> the element is only frame-sized (width/height: 100%) and
+  //               clips the overflow, so the frame runs out first
+  // Taking the painted size in the cover case permits a translate past the
+  // point where a frame-sized element still covers the frame, and the
+  // AbsoluteFill behind it shows as a black band down one edge. Verified: it
+  // did exactly that before this min().
+  const clampToCoverableOverflow = (desiredPx: number, painted: number, frameExtent: number) => {
+    const movable = Math.min(painted, frameExtent);
+    const maxPx = (Math.max(movable * scale - frameExtent, 0) / 2) * OVERFLOW_SAFETY;
     return Math.max(Math.min(desiredPx, maxPx), -maxPx);
   };
 
-  const x = clampToPaintedOverflow(-scale * (focus.x - 0.5) * drawnW, drawnW, frameW);
-  const y = clampToPaintedOverflow(-scale * (focus.y - 0.5) * drawnH, drawnH, frameH);
+  const x = clampToCoverableOverflow(-scale * (focus.x - 0.5) * drawnW, drawnW, frameW);
+  const y = clampToCoverableOverflow(-scale * (focus.y - 0.5) * drawnH, drawnH, frameH);
 
   return `translate(${x}px, ${y}px) scale(${scale})`;
 }
