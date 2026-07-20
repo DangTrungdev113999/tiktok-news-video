@@ -144,9 +144,11 @@ const FOCUS_APPROACH_DISTANCE = 0.16;
 // across at all -- at scale 1 a blur-padded picture is smaller than the frame
 // and the translate clamps to zero, so the approach would be invisible.
 const FOCUS_APPROACH_SCALE = 1.1;
-// Hard ceiling on an aimed push. Past this the arrival reads as a lunge rather
-// than a camera settling, and on a phone the source pixels start to show.
-const FOCUS_SCALE_MAX = 1.5;
+// Hard ceiling on an aimed push (author's call, 2026-07-20). Past this the
+// arrival reads as a lunge rather than a camera settling. Deliberately tighter
+// than ZOOM_MAX, which bounds an untargeted zoom_in/zoom_out: an AIMED move is
+// already carrying the eye somewhere, so it needs far less scale to register.
+const FOCUS_SCALE_MAX = 1.3;
 
 // Safety factor applied to the theoretical max crop overflow before letting
 // translate use it (leaves a little margin for rounding/anti-aliasing).

@@ -69,6 +69,11 @@ An aimed zoom ships as a single-point `focus` entry with the percentage as its
 "focus": [{ "x": 0.35, "y": 0.30, "scale": 1.5, "note": "target 1 = ao vest xanh" }]
 ```
 
+**A targeted zoom is capped at 1.3**, not at the 2.0 ceiling above. It ships as
+a `focus` entry, and an aimed move needs far less scale to register than an
+untargeted one — `zoom_in: 50%, target 1 ...` therefore lands at 1.3, not 1.5.
+Use the untargeted form when you actually want a big push.
+
 `zoom_out` with a target runs it backwards — the shot **starts** close on the
 marker and pulls back to natural framing (`focusReverse: true`). Measured on a
 render, the two are exact mirrors of each other.

@@ -99,7 +99,7 @@ export interface FocusPoint {
   x: number;
   /** 0 = top edge, 1 = bottom edge of the visible image. */
   y: number;
-  /** Zoom factor at the peak of the push. ~1.15 loose, ~1.6 tight. */
+  /** Zoom factor at the peak of the push. ~1.12 loose, 1.3 tight -- clamped to 1.3. */
   scale: number;
   /**
    * Frame WITHIN THIS SHOT at which the push reaches `scale`, then holds.

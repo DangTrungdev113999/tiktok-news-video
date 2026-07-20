@@ -135,9 +135,12 @@ For each asset carrying `focus_object`:
    person, the **face**, not the body centroid:
    - `x`: 0 = left edge, 1 = right edge
    - `y`: 0 = top edge, 1 = bottom edge
-4. **Choose how tight to go.** `scale` is the zoom at the peak — roughly 1.15
-   for a single large subject, 1.35 for one person in a group, up to 1.6 for
-   one face in a crowd. Never above 1.8: past that the source pixels show.
+4. **Choose how tight to go.** `scale` is the zoom at the peak — roughly 1.12
+   for a single large subject, 1.2 for one person in a group, up to 1.3 for one
+   face in a crowd. **1.3 is a hard ceiling** and the renderer clamps to it: an
+   aimed move is already carrying the eye somewhere, so it needs far less scale
+   than an untargeted zoom to register, and more reads as a lunge. Ask for a
+   bigger number and you will simply get 1.3.
 5. **Resolve `lúc "..."`** to `peakSec`, if present.
 6. **Say what you saw, in chat.** One line per asset:
    `anh_2.jpg — "1 trong anh_2_des.jpg" → người áo vest hồng bên phải (không phải con thú bông mà số 1 đè lên) → focus (0.75, 0.31), zoom 1.35, đỉnh tại "Trung Đặng" (7.0s)`.
