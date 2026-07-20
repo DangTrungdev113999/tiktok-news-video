@@ -73,10 +73,26 @@ export interface CaptionLine {
   endFrame: number;
 }
 
-/** Shared brand assets for the hook-card overlay. Paths relative to the repo root. */
+/**
+ * One resolved brand kit for the hook-card overlay -- the skill picks a
+ * single brand (from potentially several under $WORKSPACE_DIR/brand/) before
+ * building spec.json, so this shape is always exactly one brand's data, not
+ * a collection. See scripts/brand-kit.mjs and
+ * docs/superpowers/specs/2026-07-18-multi-brand-kit-design.md.
+ */
 export interface BrandKit {
+  /** Path relative to the repo root, e.g. "brand/mat-vu-tac-quyen/hook-bg.jpg". */
   hookBgPath: string;
-  logoPath: string;
+  /** Ribbon badge text, e.g. "Mật Vụ Tác Quyền". */
+  badgeLabel: string;
+  /** 3-stop gradient for the badge background, e.g. ["#FF9A3D", "#FF6A00", "#F04E00"]. */
+  badgeGradient: [string, string, string];
+  /** The badge's boxShadow color, e.g. "rgba(120,40,0,0.4)". */
+  badgeShadow: string;
+  /** 3-stop embossed textShadow stack for the headline. */
+  headlineShadow: [string, string, string];
+  /** The headline's WebkitTextStroke color. */
+  headlineStroke: string;
 }
 
 export interface VideoSpec {

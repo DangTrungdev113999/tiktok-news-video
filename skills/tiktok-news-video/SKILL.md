@@ -1,7 +1,7 @@
 ---
 name: tiktok-news-video
 user-invocable: true
-description: "TikTok News Video pipeline. From images/videos + a scene script pasted in chat: rewrite the script for zero-background-knowledge readability (user approves/edits) -> resolve narration (user MP3 + forced alignment, or ElevenLabs v3 TTS with built-in timestamps) -> resolve BGM (saved library or new upload) -> classify each asset's motion by aspect ratio (pan/zoom/diagonal/passthrough + blur-pad for non-filling assets) -> render END-TO-END to a finished MP4 via Remotion. Only script review + BGM choice ask the user; everything else is automatic, including bug fixing. Invoked by /make-video."
+description: "TikTok News Video pipeline. From images/videos + a scene script pasted in chat: rewrite the script for zero-background-knowledge readability (user approves/edits) -> resolve narration (user MP3 + forced alignment, or ElevenLabs v3 TTS with built-in timestamps) -> resolve BGM (saved library or new upload) -> resolve which brand kit to use (auto if only one exists) -> classify each asset's motion by aspect ratio (pan/zoom/diagonal/passthrough + blur-pad for non-filling assets) -> render END-TO-END to a finished MP4 via Remotion. Script review + BGM choice always ask the user; brand choice only asks when 2+ brand folders exist; everything else is automatic, including bug fixing. Invoked by /make-video."
 argument-hint: "<scene script pasted in chat>"
 ---
 
@@ -15,8 +15,11 @@ operational summary of that spec.
 
 ## Autonomy contract (read first)
 
-- **You pause for the user in exactly TWO places:** the script-rewrite review
-  (Step 3) and the BGM choice (Step 5). Everything else — asset classification,
+- **You always pause for the user in TWO places:** the script-rewrite review
+  (Step 3) and the BGM choice (Step 5). A THIRD pause — which brand kit to use
+  (Step 6) — only fires conditionally: skip it silently if exactly one brand
+  folder exists (just use it), stop with a clear error if zero valid ones
+  exist, only ask when 2+ exist. Everything else — asset classification,
   effect selection, TTS/alignment, rendering, retrying a failed render — is
   automatic. Don't ask permission for deterministic steps the spec already
   decided.
@@ -60,15 +63,17 @@ WORKSPACE_DIR = config.local.json's `workspaceDir` field — a normal, visible
               ~/Desktop/tiktok-news-video-workspace). Contains:
                 $WORKSPACE_DIR/assets/         user's reusable image/video library
                 $WORKSPACE_DIR/bgm-library/    saved BGM tracks
-                $WORKSPACE_DIR/brand/          hook-card brand assets (hook-bg.jpg, logo.jpg)
+                $WORKSPACE_DIR/brand/          one subfolder per brand kit (see below)
                 $WORKSPACE_DIR/output/         rendered videos, <dated-slug>/ per run
 ```
 
-`config.local.json`'s `brandKit` field (`{hookBgPath, logoPath}`, set once via
-`scripts/brand-kit.mjs set <hookBgSource> <logoSource>`) is what makes the
-hook-card overlay (Step 6) possible — if it's missing when you reach a hook
-scene, ask the user for their brand assets once and save them with that
-script rather than skipping the hook card silently.
+`$WORKSPACE_DIR/brand/<slug>/` holds one self-contained brand kit
+(`hook-bg.jpg` + `brand.json` — badge text and full color palette, see
+`docs/superpowers/specs/2026-07-18-multi-brand-kit-design.md`). Brands are
+prepared by the plugin owner (co-designed with Claude) and handed to
+employees as a folder to drop in — there is no registration command. Use
+`scripts/brand-kit.mjs`'s `listBrands(workspaceDir)`/`getBrand(slug,
+workspaceDir)` to resolve one (see Step 6).
 
 Every script that touches assets/bgm-library/output/config takes
 `workspaceDir` as an explicit argument (never infers it from its own
@@ -168,12 +173,24 @@ saying in scene 1, not a separately-invented stat headline; do not craft a
 new sentence here unless the user explicitly asks for a different one. The
 hook scene is excluded from karaoke captions (Step 4's `words[]` for that
 scene is simply not passed to `buildSpec` — see below); it gets the
-hook-card overlay instead (gradient card + brand logo + the headline,
-rendered by `HookCard.tsx`). If
-`$CONFIG_FILE`'s `brandKit` field is missing, ask the user for their two
-brand assets (a bottom-card background image + a logo) once and save them
-via `scripts/brand-kit.mjs set <hookBgSource> <logoSource>` — this is a
-one-time setup per machine, not a per-video question.
+hook-card overlay instead (gradient card + brand badge + the headline,
+rendered by `HookCard.tsx`), which needs one resolved brand kit.
+
+**Resolve the brand kit** (the conditional THIRD user pause from the
+autonomy contract): call `listBrands(workspaceDir)` from
+`scripts/brand-kit.mjs`.
+- Report any entries in its `invalid[]` array by name in chat (e.g. "bỏ qua
+  folder `abc/` vì thiếu `brand.json`") — never silently drop a broken
+  folder, the employee who copied it needs to know something's wrong.
+- Zero valid brands → stop with a clear message telling the user to drop a
+  brand folder (with `hook-bg.jpg` + `brand.json`) into
+  `$WORKSPACE_DIR/brand/<slug>/` — do not render without one.
+- Exactly one valid brand → use it automatically, no question asked; note
+  which brand was used in the Step 8 report.
+- Two or more valid brands → ask the user to pick one, showing each
+  `displayName`.
+Resolve to one `brand` object (from `listBrands`' `brands[]`) before
+building the spec.
 
 Convert each scene's `{startSec, endSec}` (from Step 4) into
 `{startFrame, durationInFrames}` at 30fps — `buildSpec` does the gap-closing
@@ -181,9 +198,10 @@ itself (see Step 4's note), so pass the raw per-scene timing straight
 through. Call `buildSpecToFile` from `scripts/build-spec.mjs` with
 `workspaceDir: <WORKSPACE_DIR>` (from `$CONFIG_FILE`), each scene's `words[]`
 (omit for the hook scene), `isHook`/`hookHeadline` on the hook scene, and
-`brandKit` from `$CONFIG_FILE` — it resolves `assets/<assetFilename>`
-against that workspace, chunks `words[]` into karaoke caption lines, and
-returns the full `spec.json` shape Remotion expects.
+`brandKit` set to the resolved brand object above — it resolves
+`assets/<assetFilename>` against that workspace, chunks `words[]` into
+karaoke caption lines, and returns the full `spec.json` shape Remotion
+expects.
 
 ## Step 7 — Render
 
@@ -202,7 +220,7 @@ retrying — don't surface a raw stack trace as "done, but broken."
 
 Tell the user where the final video landed
 (`$WORKSPACE_DIR/output/<dated-slug>/final.mp4`), the video's duration, and a
-one-line summary of what effects/BGM/voice were used.
+one-line summary of what effects/BGM/voice/brand were used.
 
 ## Explicit scope guard
 

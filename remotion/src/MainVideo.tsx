@@ -42,7 +42,7 @@ export const MainVideo: React.FC<VideoSpec> = ({
             durationInFrames={scene.durationInFrames}
           />
           {scene.isHook && brandKit ? (
-            <HookCard headline={scene.hookHeadline ?? ""} hookBgPath={brandKit.hookBgPath} />
+            <HookCard headline={scene.hookHeadline ?? ""} brandKit={brandKit} />
           ) : null}
         </Sequence>
       ))}

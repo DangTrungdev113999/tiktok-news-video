@@ -1,101 +1,134 @@
 #!/usr/bin/env node
 // scripts/brand-kit.mjs
 //
-// The hook-card overlay (remotion/src/HookCard.tsx) needs two brand assets
-// (a gradient card template + a logo) that are the SAME across every video
-// for a given channel -- not per-video content like assets/, and not
-// user-picked-per-run like bgm-library/. Configured ONCE (like voiceId), then
-// reused automatically by every future make-video run without re-asking, the
-// same reasoning bgm-library.mjs uses for saved BGM tracks.
+// Multi-brand kit resolution (docs/superpowers/specs/
+// 2026-07-18-multi-brand-kit-design.md). The plugin owner hand-designs a
+// brand kit per TikTok channel and hands the whole folder to whichever
+// employee runs that channel -- so this is a pure directory-scan, not a
+// register-via-CLI flow like the old single-brandKit model: a brand
+// "activates" the moment its folder is dropped into
+// <workspaceDir>/brand/<slug>/, no command required.
+//
+// Each brand folder must contain:
+//   hook-bg.jpg   -- background image for the hook card
+//   brand.json    -- {displayName, badgeLabel, badgeGradient[3],
+//                     badgeShadow, headlineShadow[3], headlineStroke}
 //
 // Usage (CLI):
-//   node scripts/brand-kit.mjs set <hookBgSourcePath> <logoSourcePath>
-//   node scripts/brand-kit.mjs get
+//   node scripts/brand-kit.mjs list
+//   node scripts/brand-kit.mjs get <slug>
 //
 // Usage (import):
-//   import { setBrandKit, getBrandKit } from './brand-kit.mjs'
+//   import { listBrands, getBrand } from './brand-kit.mjs'
 
-import { copyFile, mkdir, readFile, writeFile, access } from 'node:fs/promises';
+import { readdir, readFile, access } from 'node:fs/promises';
 import { constants as fsConstants } from 'node:fs';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
-import { CONFIG_PATH, getWorkspaceDir } from './workspace.mjs';
+import { getWorkspaceDir } from './workspace.mjs';
 
 const HOOK_BG_FILENAME = 'hook-bg.jpg';
-const LOGO_FILENAME = 'logo.jpg';
+const MANIFEST_FILENAME = 'brand.json';
+const REQUIRED_MANIFEST_FIELDS = [
+  'displayName',
+  'badgeLabel',
+  'badgeGradient',
+  'badgeShadow',
+  'headlineShadow',
+  'headlineStroke',
+];
 
 /**
- * Copy the two brand assets into <workspaceDir>/brand/ and register their
- * (workspace-relative) paths in config.local.json's `brandKit` field.
- * @param {string} hookBgSourcePath
- * @param {string} logoSourcePath
- * @param {string} [workspaceDir] - defaults to the persisted workspace folder.
- * @returns {Promise<{hookBgPath: string, logoPath: string}>}
+ * Validate one brand folder and return its resolved shape, or throw with a
+ * short reason (missing file, invalid JSON, missing field) -- callers turn
+ * this into a per-slug {slug, error} entry rather than letting one bad
+ * folder crash the whole scan.
  */
-export async function setBrandKit(hookBgSourcePath, logoSourcePath, workspaceDir = getWorkspaceDir()) {
-  const resolvedHookBg = path.resolve(hookBgSourcePath);
-  const resolvedLogo = path.resolve(logoSourcePath);
-  for (const p of [resolvedHookBg, resolvedLogo]) {
-    try {
-      await access(p, fsConstants.R_OK);
-    } catch {
-      throw new Error(`Brand asset source file not found or not readable: ${p}`);
-    }
+async function resolveBrandFolder(brandDir, slug) {
+  const hookBgPath = path.join(brandDir, HOOK_BG_FILENAME);
+  try {
+    await access(hookBgPath, fsConstants.R_OK);
+  } catch {
+    throw new Error(`missing ${HOOK_BG_FILENAME}`);
   }
 
-  const brandDir = path.join(workspaceDir, 'brand');
-  await mkdir(brandDir, { recursive: true });
-  await copyFile(resolvedHookBg, path.join(brandDir, HOOK_BG_FILENAME));
-  await copyFile(resolvedLogo, path.join(brandDir, LOGO_FILENAME));
+  const manifestPath = path.join(brandDir, MANIFEST_FILENAME);
+  let raw;
+  try {
+    raw = await readFile(manifestPath, 'utf8');
+  } catch {
+    throw new Error(`missing ${MANIFEST_FILENAME}`);
+  }
 
-  const brandKit = {
-    hookBgPath: path.posix.join('brand', HOOK_BG_FILENAME),
-    logoPath: path.posix.join('brand', LOGO_FILENAME),
+  let manifest;
+  try {
+    manifest = JSON.parse(raw);
+  } catch {
+    throw new Error(`${MANIFEST_FILENAME} is not valid JSON`);
+  }
+
+  const missing = REQUIRED_MANIFEST_FIELDS.filter((f) => manifest[f] === undefined);
+  if (missing.length > 0) {
+    throw new Error(`${MANIFEST_FILENAME} missing field(s): ${missing.join(', ')}`);
+  }
+
+  return {
+    slug,
+    displayName: manifest.displayName,
+    badgeLabel: manifest.badgeLabel,
+    badgeGradient: manifest.badgeGradient,
+    badgeShadow: manifest.badgeShadow,
+    headlineShadow: manifest.headlineShadow,
+    headlineStroke: manifest.headlineStroke,
+    hookBgPath: path.posix.join('brand', slug, HOOK_BG_FILENAME),
   };
-  await registerInConfig(brandKit);
-  return brandKit;
 }
 
-/** Read the registered brand kit from config.local.json, or null if not set yet. */
-export async function getBrandKit() {
-  let raw;
+/**
+ * Scan <workspaceDir>/brand/*\/ for brand folders. Returns
+ * { brands: [...resolved], invalid: [{slug, error}] } so callers can both
+ * use the valid ones and surface which folders are broken -- a non-tech
+ * employee who mis-copied a folder needs to see why it's missing from the
+ * picker, not have it silently vanish.
+ * @param {string} [workspaceDir] - defaults to the persisted workspace folder.
+ */
+export async function listBrands(workspaceDir = getWorkspaceDir()) {
+  const brandRoot = path.join(workspaceDir, 'brand');
+  let entries;
   try {
-    raw = await readFile(CONFIG_PATH, 'utf8');
-  } catch {
-    return null;
-  }
-  try {
-    const config = JSON.parse(raw);
-    return config.brandKit ?? null;
-  } catch {
-    return null;
-  }
-}
-
-async function registerInConfig(brandKit) {
-  let raw;
-  try {
-    raw = await readFile(CONFIG_PATH, 'utf8');
+    entries = await readdir(brandRoot, { withFileTypes: true });
   } catch (err) {
-    if (err.code === 'ENOENT') {
-      console.log(
-        `[brand-kit] config.local.json not found — skipping brandKit registration (run \`npm run init\` to create it).`
-      );
-      return;
-    }
+    if (err.code === 'ENOENT') return { brands: [], invalid: [] };
     throw err;
   }
 
-  let config;
-  try {
-    config = JSON.parse(raw);
-  } catch {
-    console.warn('[brand-kit] config.local.json is not valid JSON — skipping brandKit registration.');
-    return;
+  const brands = [];
+  const invalid = [];
+  for (const entry of entries.filter((e) => e.isDirectory()).sort((a, b) => a.name.localeCompare(b.name))) {
+    const slug = entry.name;
+    try {
+      brands.push(await resolveBrandFolder(path.join(brandRoot, slug), slug));
+    } catch (err) {
+      invalid.push({ slug, error: err.message });
+    }
   }
+  return { brands, invalid };
+}
 
-  config.brandKit = brandKit;
-  await writeFile(CONFIG_PATH, JSON.stringify(config, null, 2) + '\n');
+/**
+ * Resolve one brand by slug. Throws a clear error if it doesn't exist or is
+ * invalid (callers should have already offered a valid slug via listBrands,
+ * so this is a sanity check, not the primary validation path).
+ * @param {string} slug
+ * @param {string} [workspaceDir] - defaults to the persisted workspace folder.
+ */
+export async function getBrand(slug, workspaceDir = getWorkspaceDir()) {
+  const { brands, invalid } = await listBrands(workspaceDir);
+  const found = brands.find((b) => b.slug === slug);
+  if (found) return found;
+  const invalidMatch = invalid.find((b) => b.slug === slug);
+  if (invalidMatch) throw new Error(`Brand "${slug}" is invalid: ${invalidMatch.error}`);
+  throw new Error(`Brand "${slug}" not found in ${path.join(workspaceDir, 'brand')}`);
 }
 
 // ---------------------------------------------------------------------------
@@ -113,26 +146,29 @@ function isMain() {
 if (isMain()) {
   const [cmd, ...rest] = process.argv.slice(2);
 
-  if (cmd === 'set') {
-    const [hookBgSourcePath, logoSourcePath] = rest;
-    if (!hookBgSourcePath || !logoSourcePath) {
-      console.error('Usage: node scripts/brand-kit.mjs set <hookBgSourcePath> <logoSourcePath>');
+  if (cmd === 'list') {
+    const { brands, invalid } = await listBrands();
+    if (brands.length === 0 && invalid.length === 0) {
+      console.log('(no brand folders yet)');
+    } else {
+      for (const b of brands) console.log(`${b.slug}\t${b.displayName}`);
+      for (const b of invalid) console.log(`${b.slug}\t[INVALID: ${b.error}]`);
+    }
+  } else if (cmd === 'get') {
+    const [slug] = rest;
+    if (!slug) {
+      console.error('Usage: node scripts/brand-kit.mjs get <slug>');
       process.exit(1);
     }
     try {
-      const brandKit = await setBrandKit(hookBgSourcePath, logoSourcePath);
-      console.log(`[brand-kit] saved -> ${JSON.stringify(brandKit)}`);
+      const brand = await getBrand(slug);
+      console.log(JSON.stringify(brand, null, 2));
     } catch (err) {
       console.error(`[brand-kit] ERROR: ${err.message}`);
       process.exit(1);
     }
-  } else if (cmd === 'get') {
-    const brandKit = await getBrandKit();
-    console.log(brandKit ? JSON.stringify(brandKit, null, 2) : '(no brand kit configured yet)');
   } else {
-    console.error(
-      'Usage:\n  node scripts/brand-kit.mjs set <hookBgSourcePath> <logoSourcePath>\n  node scripts/brand-kit.mjs get'
-    );
+    console.error('Usage:\n  node scripts/brand-kit.mjs list\n  node scripts/brand-kit.mjs get <slug>');
     process.exit(1);
   }
 }

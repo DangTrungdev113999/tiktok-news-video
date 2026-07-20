@@ -282,7 +282,7 @@ export async function buildSpec({ scenes, workspaceDir, narrationAudioPath, bgmA
   if (captionLines.length > 0) spec.captions = captionLines;
   if (sceneSpecs.some((s) => s.isHook)) {
     if (!brandKit) {
-      throw new Error('buildSpec: a scene has isHook: true but no brandKit was provided (hookBgPath/logoPath).');
+      throw new Error('buildSpec: a scene has isHook: true but no brandKit was provided (resolve one via scripts/brand-kit.mjs first).');
     }
     spec.brandKit = brandKit;
   }
