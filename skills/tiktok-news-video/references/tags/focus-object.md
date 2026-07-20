@@ -1,14 +1,15 @@
 # `focus_object` — point the camera at a specific thing in the image
 
 ```
-anh_1.jpg | focus_object: nguoi thu 1 tu trai sang
-anh_2.jpg | focus_object: nhan vat deo mat na, luc "su bin hoang son"
-anh_3.jpg | focus_object: chan dung nguoi dan ong ao vest
+anh_1.jpg | focus_object: người thứ 1 từ trái sang
+anh_2.jpg | focus_object: nhân vật đeo mặt nạ
+anh_3.jpg | focus_object: chân dung người đàn ông áo vest
 ```
 
-The value is **free-form natural Vietnamese**. It describes *what* in the
-picture matters. There is no enum to memorise — the author writes what they
-would say out loud.
+The value is **free-form**. It describes *what* in the picture matters, in
+whatever words the author would use out loud. There is no enum, no sub-syntax,
+and no reserved words inside the value — everything after the colon is
+description, and you interpret it the way a person would.
 
 Its job: the pipeline cannot tell which person in a group photo the narration
 is talking about. Only the author knows. This tag carries that knowledge in.
@@ -34,49 +35,21 @@ For each asset carrying `focus_object`:
 1. **Read the image file** with the Read tool
    (`$WORKSPACE_DIR/assets/<filename>`). Actually look at it — this is the one
    step in the pipeline where vision is the point.
-2. **Locate what the description names.** Ordinal descriptions ("nguoi thu 3
-   tu trai sang") are counted left-to-right by the subject's own horizontal
+2. **Locate what the description names.** Ordinal descriptions ("người thứ 3
+   từ trái sang") are counted left-to-right by each subject's own horizontal
    centre, not by where their limbs reach.
 3. **Write down the focus point** as normalised coordinates of the subject's
    visual anchor — for a person, the **face**, not the body centroid:
    - `focusX`: 0 = left edge, 1 = right edge
    - `focusY`: 0 = top edge, 1 = bottom edge
-4. **Write down a focus tightness**, `focusScale`, the zoom factor at the peak
-   of the move. 1.35 for a person in a group, 1.15 for a single large subject,
-   up to 1.6 for one face in a crowd. Never above 1.8 — past that the source
-   pixels show.
-5. If the description also carries `luc "<cụm từ>"`, resolve the cue (below).
-6. **Say what you saw, in chat.** One line per asset:
-   `anh_2.jpg — "nhan vat deo mat na" → người đeo mặt nạ đen, thứ 2 từ trái → focus (0.38, 0.31), zoom 1.35`.
+4. **Choose how tight to go.** `focusScale` is the zoom factor at the peak of
+   the move — roughly 1.15 for a single large subject, 1.35 for one person in
+   a group, up to 1.6 for one face in a crowd. Never above 1.8: past that the
+   source pixels show.
+5. **Say what you saw, in chat.** One line per asset:
+   `anh_2.jpg — "nhân vật đeo mặt nạ" → người đeo mặt nạ đen, thứ 2 từ trái → focus (0.38, 0.31), zoom 1.35`.
    The author is the only one who can catch a misidentification, and they can
    only catch it if you tell them what you picked.
-
-## The `luc "..."` cue
-
-`luc "<cụm từ>"` inside the value pins the *peak* of the move to the moment
-that phrase is spoken.
-
-- Match against that scene's `words[]` from Step 4, **diacritic-insensitive
-  and case-insensitive** — fold both sides to lowercase ASCII before comparing,
-  so `su bin hoang son` matches `Su Bin Hoàng Sơn`.
-- **First occurrence wins.** If the phrase occurs more than once in the scene,
-  use the first and say so in chat.
-- **Phrase not found** → this is an author error worth surfacing. Fall back to
-  the middle of the asset's window and tell the user the phrase wasn't in the
-  narration for that scene.
-- The cue **outranks a `(30%)` share**: widen or shift the asset's window so it
-  contains the cue frame, then re-split the remaining time among the other
-  assets. Report the adjustment. *(Only meaningful once a scene can hold
-  several assets — see `README.md`'s Duration share status. On today's
-  one-asset-per-scene model the window is the whole scene, so the cue only
-  moves the peak within it.)*
-
-### `luc` is a sub-token here, not a key
-
-`luc "..."` is written with quotes and no colon because it lives **inside**
-`focus_object`'s free-form value. It is deliberately *not* a registered key.
-If a future tag also needs timing, promote `luc:` to a standalone key at that
-point and migrate this one — don't let the two grammars coexist.
 
 ## What lands in `spec.json`
 
@@ -86,7 +59,6 @@ The tag resolves into plain numbers on the asset:
 |---|---|
 | `focusX`, `focusY` | 0–1 normalised focus point → `transform-origin` |
 | `focusScale` | zoom factor at the peak |
-| `focusPeakFrame` | absolute frame the peak lands on; null = middle of the window |
 | `focusNote` | the human-readable line you reported in chat |
 
 `focusNote` is not read by the renderer. It exists so that the saved
@@ -94,36 +66,32 @@ The tag resolves into plain numbers on the asset:
 
 ## How it changes the motion
 
-`focus_object` **forces the effect to `zoom` (push-in)** and overrides its
-origin and timing. It does not add a new effect. Per the house rule in
-`motion.md`, the tag changes which parameters `Scene.tsx` receives; it never
-adds a branch.
+The tag's contract is only: **the described thing ends up large and centred in
+frame.** Which movement gets it there is your call — push in on it, hold it
+steady while the rest drifts, settle onto it off a wider start. Vary it so a
+video with several focused assets doesn't feel mechanical.
 
-Concretely, versus an automatic zoom:
-
-| | Automatic | With `focus_object` |
-|---|---|---|
-| Origin | image centre | `(focusX, focusY)` |
-| Direction | alternates push/pull by occurrence | always push in |
-| Peak | end of the window | `focusPeakFrame` |
-
-The alternation counter for the `zoom` class **skips** an asset that carries
-this tag — a forced push must not flip the next portrait's turn.
+What it must not do is add a bespoke rendering path. Per the house rule in
+`motion.md`, a tag changes which parameters `Scene.tsx` receives. If a genuinely
+new movement is wanted, it becomes a named effect in
+`knowledge/effect-catalog.md` plus a branch in `computeTransform` — available
+to every asset, not just this tag.
 
 **This is real `Scene.tsx` work, not a free parameter pass.** As of 2026-07-20
 `computeTransform` hardcodes `transform-origin: center center` (four call
-sites) and always peaks at `endFrame` using the fixed `ZOOM_END` constant.
-Shipping this key means widening the `zoom` branch to take an origin, a target
-scale, and a peak frame. That stays inside the one-parametric-component rule —
-it widens the existing branch rather than adding a bespoke path — but budget
-for it.
+sites) and the `zoom` branch always runs the fixed `ZOOM_END` constant across
+the whole window. Shipping this key means widening that branch to take an
+origin and a target scale.
 
-## Interaction with `fill_full_screen`
+The alternation counter for the `zoom` class **skips** an asset that carries
+this tag — a forced, aimed move must not flip the next portrait's turn.
 
-Independent. `focus_object` decides where the camera looks; `fill_full_screen`
-decides whether the frame is edge-to-edge or blur-padded. Both may appear on
-the same asset. If blur-padded, the focus point is normalised against the
-**visible image**, not the padded 1080×1920 frame.
+## Interaction with framing
+
+`focus_object` decides where the camera looks. It says nothing about whether
+the frame is edge-to-edge or blur-padded — that is a separate tag's job. Both
+may appear on the same asset. If the asset is blur-padded, the focus point is
+normalised against the **visible image**, not the padded 1080×1920 frame.
 
 ## Failure rule
 

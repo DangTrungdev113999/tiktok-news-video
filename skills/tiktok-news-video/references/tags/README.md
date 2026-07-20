@@ -27,18 +27,30 @@ video.
 Values are free-form for keys that say so. `focus_object` takes natural
 Vietnamese; most other keys take a fixed enum.
 
-## Duration share
+## One screen, several assets
 
-> **Status: not yet implemented.** One scene currently holds exactly one
-> asset, so `(30%)` has nothing to divide. Everything in this section
-> describes the target state. Until it ships, report a `%` back to the user
-> as unsupported rather than ignoring it.
+A screen may hold several images, several videos, or a mix — one per line:
 
-`(30%)` after a filename claims that share of the scene's duration when the
-scene holds several assets. With no `%` on any asset, the scene's time splits
-evenly. `%` is a hint, not a command: if a tag pins the asset to a moment in
-the narration (`luc "..."` inside `focus_object`), **the cue wins and the `%`
-is adjusted around it.** Say so in the Step 8 report when that happens.
+```
+Screen 3:
+anh_1.jpg (30%) | focus_object: người thứ 1 từ trái sang
+anh_2.jpg (70%) | focus_object: nhân vật đeo mặt nạ
+video_1.mp4
+```
+
+`(30%)` is **that asset's share of the screen's duration**. The screen's total
+length is still set by the narration for that screen; `%` only decides how it
+is divided.
+
+| Case | Result |
+|---|---|
+| No `%` anywhere | split evenly |
+| `%` on every asset | use them; if they don't total 100, normalise and say so |
+| `%` on some only | the tagged ones take their share, the rest split what's left |
+| `%` totalling over 100 | normalise down, report it |
+
+Captions are unaffected — they are global and track the speech, not the
+assets.
 
 ## Registered keys
 

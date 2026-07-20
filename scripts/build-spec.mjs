@@ -174,9 +174,15 @@ function chunkWordsIntoCaptionLines(words) {
 
 /**
  * @param {object} args
- * @param {Array<{assetFilename: string, startSec: number, endSec: number, isHook?: boolean, hookHeadline?: string, words?: Array<{text:string,startSec:number,endSec:number}>}>} args.scenes
- *   One entry per scene, in order. `assetFilename` is relative to `assets/`
- *   (e.g. "hop-bao.jpg"). `startSec`/`endSec` come from tts-elevenlabs.mjs's
+ * @param {Array<{assetFilename?: string, assets?: Array<{filename: string, share?: number}>, startSec: number, endSec: number, isHook?: boolean, hookHeadline?: string, words?: Array<{text:string,startSec:number,endSec:number}>}>} args.scenes
+ *   One entry per SCREEN, in order. A screen names its media either as
+ *   `assetFilename` (the single-asset shorthand) or as `assets[]` when it
+ *   holds several images/videos, each with an optional `share` (the author's
+ *   `(30%)` token) -- see skills/.../references/tags/README.md. Filenames are
+ *   relative to `assets/` (e.g. "hop-bao.jpg"). A multi-asset screen is
+ *   flattened into one shot per asset before anything else runs, so
+ *   `spec.scenes[]` may be longer than this array.
+ *   `startSec`/`endSec` come from tts-elevenlabs.mjs's
  *   or align-audio.mjs's `timings[]` (same shape from both). `words` (same
  *   source's `words[i]`) drives karaoke captions -- omit or pass `isHook:
  *   true` to exclude a scene (normally the hook/cover scene) from captions.
@@ -209,11 +215,108 @@ function closeTimingGaps(scenes) {
   }));
 }
 
+/**
+ * Accept either shorthand (`assetFilename: "a.jpg"`) or the multi-asset form
+ * (`assets: [{filename, share}]`), and return the multi-asset form. A bare
+ * string in `assets[]` is treated as `{filename}`.
+ */
+function normalizeAssets(screen) {
+  if (Array.isArray(screen.assets) && screen.assets.length > 0) {
+    return screen.assets.map((a) => (typeof a === 'string' ? { filename: a } : a));
+  }
+  if (screen.assetFilename) return [{ filename: screen.assetFilename }];
+  throw new Error('buildSpec: a screen has neither assetFilename nor a non-empty assets[]');
+}
+
+/**
+ * Turn each asset's optional `share` (the `(30%)` token) into a fraction of
+ * the screen's duration. Returns fractions summing to exactly 1.
+ *
+ * - no share anywhere       -> even split
+ * - a share on every asset  -> use them, normalised (so 30/70 and 3/7 agree)
+ * - a share on some only    -> tagged take theirs, the rest split the remainder
+ *
+ * Shares that leave no remainder for the untagged assets (e.g. 60+50 on a
+ * 3-asset screen) would otherwise produce zero-length shots, so untagged
+ * assets fall back to an even share and the final normalisation scales
+ * everything down together. The result is always renderable; the skill is
+ * responsible for telling the user their numbers were adjusted.
+ */
+function resolveShareFractions(assets) {
+  const n = assets.length;
+  const given = assets.map((a) => (typeof a.share === 'number' && a.share > 0 ? a.share : null));
+  const untaggedCount = given.filter((v) => v === null).length;
+
+  let shares;
+  if (untaggedCount === n) {
+    shares = given.map(() => 1);
+  } else if (untaggedCount === 0) {
+    shares = given;
+  } else {
+    const remainder = 100 - given.reduce((sum, v) => sum + (v ?? 0), 0);
+    const perUntagged = remainder > 0 ? remainder / untaggedCount : 100 / n;
+    shares = given.map((v) => v ?? perUntagged);
+  }
+
+  const total = shares.reduce((sum, v) => sum + v, 0);
+  return shares.map((v) => v / total);
+}
+
+/**
+ * Flatten one screen (which may hold several images/videos) into one SHOT per
+ * asset, each with its own time window. Everything downstream -- motion
+ * classification, `<Sequence>`, `Scene.tsx` -- already works one asset at a
+ * time, so "screen" is purely an authoring-input concept and is resolved away
+ * here rather than reaching Remotion.
+ *
+ * Two invariants this must preserve:
+ *
+ * 1. **Contiguity.** Consecutive shots share the EXACT same boundary value
+ *    (each shot's `endSec` is the next one's `startSec`, and the last shot
+ *    lands exactly on the screen's own `endSec`). Frame rounding then can't
+ *    open a 1-frame gap, which would render as a black flash. The following
+ *    `closeTimingGaps` pass relies on this too.
+ * 2. **Captions belong to the SCREEN, not the shot.** Karaoke captions track
+ *    speech and don't care where an image changes, so `words` is attached to
+ *    the FIRST shot only. Copying it onto every shot would emit each caption
+ *    line once per asset -- a 2-asset screen would show doubled captions.
+ *
+ * `isHook`/`hookHeadline` ARE copied onto every shot of a hook screen: the
+ * hook card is fully static, so it renders identically across a shot boundary
+ * and the remount is invisible. Without this, a 2-asset hook screen would
+ * drop the brand badge halfway through.
+ */
+function expandScreensIntoShots(screens) {
+  const shots = [];
+  for (const screen of screens) {
+    const assets = normalizeAssets(screen);
+    const fractions = resolveShareFractions(assets);
+    const span = screen.endSec - screen.startSec;
+    let cursor = screen.startSec;
+
+    assets.forEach((asset, i) => {
+      const startSec = cursor;
+      cursor = i === assets.length - 1 ? screen.endSec : startSec + span * fractions[i];
+      const { assets: _assets, assetFilename: _assetFilename, words, ...rest } = screen;
+      shots.push({
+        ...rest,
+        assetFilename: asset.filename,
+        startSec,
+        endSec: cursor,
+        ...(i === 0 && words ? { words } : {}),
+      });
+    });
+  }
+  return shots;
+}
+
 export async function buildSpec({ scenes, workspaceDir, narrationAudioPath, bgmAudioPath, bgmVolume, brandKit }) {
   if (!Array.isArray(scenes) || scenes.length === 0) {
     throw new Error('buildSpec requires a non-empty scenes[] array');
   }
-  scenes = closeTimingGaps(scenes);
+  // Screens in -> shots out. One screen may hold several assets; everything
+  // below this line works one asset at a time.
+  scenes = closeTimingGaps(expandScreensIntoShots(scenes));
 
   const occurrence = { landscape: 0, portrait: 0, square: 0 };
   const sceneSpecs = [];

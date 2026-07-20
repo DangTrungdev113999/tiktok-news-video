@@ -17,7 +17,14 @@ Call `buildSpecToFile` from `scripts/build-spec.mjs` with:
 | `brandKit` | the resolved brand object (see `hook-and-brand.md`) |
 | `narrationAudioPath` / `bgmAudioPath` | relative to `workspaceDir` |
 
-It resolves `assets/<assetFilename>` against that workspace, chunks `words[]`
+A screen holding several assets is passed as
+`assets: [{filename, share}]` instead of `assetFilename` — see
+`tags/README.md`. `buildSpec` flattens it into one **shot** per asset,
+dividing the screen's time by the shares, so `spec.scenes[]` may be longer
+than what you passed in. Shots are contiguous by construction and the screen's
+`words[]` is attached once, so captions never double up.
+
+It resolves `assets/<filename>` against that workspace, chunks `words[]`
 into karaoke caption groups, applies the motion classification, and returns
 the full `spec.json` shape Remotion expects.
 
