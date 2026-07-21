@@ -175,63 +175,155 @@ function tokenize(text) {
     .filter(Boolean);
 }
 
-const LOOKAHEAD = 12; // how far forward to search for a word match before giving up and advancing positionally
+// Needleman-Wunsch scores. Only their ratios matter. A match must be worth
+// more than two gaps, otherwise the optimal path prefers skipping both sides
+// over pairing words that genuinely correspond.
+const SCORE_MATCH = 2;
+const SCORE_MISMATCH = -1;
+const SCORE_GAP = -1;
 
 /**
- * Walk `transcriptWords` (in order) against `sceneTexts` (in order) and
- * return one raw {startSec, endSec} span per scene (no padding applied yet).
+ * Globally align two normalized token sequences and return, for each token of
+ * `a`, the index in `b` it pairs with (or -1 where it aligns to a gap).
+ *
+ * O(n*m) time and memory. For this pipeline that is a few hundred by a few
+ * hundred -- around 150k cells for a 90-second script -- so the simple full
+ * matrix is the right call over any banded or linear-space variant.
+ */
+function globalAlign(a, b) {
+  const n = a.length;
+  const m = b.length;
+  const width = m + 1;
+  const score = new Float64Array((n + 1) * width);
+  // 0 = diagonal (pair), 1 = up (a consumed, gap in b), 2 = left (b consumed)
+  const back = new Uint8Array((n + 1) * width);
+
+  for (let i = 1; i <= n; i++) {
+    score[i * width] = i * SCORE_GAP;
+    back[i * width] = 1;
+  }
+  for (let j = 1; j <= m; j++) {
+    score[j] = j * SCORE_GAP;
+    back[j] = 2;
+  }
+
+  for (let i = 1; i <= n; i++) {
+    const ai = a[i - 1];
+    const row = i * width;
+    const prevRow = row - width;
+    for (let j = 1; j <= m; j++) {
+      const diag = score[prevRow + j - 1] + (ai === b[j - 1] ? SCORE_MATCH : SCORE_MISMATCH);
+      const up = score[prevRow + j] + SCORE_GAP;
+      const left = score[row + j - 1] + SCORE_GAP;
+      let best = diag;
+      let dir = 0;
+      if (up > best) { best = up; dir = 1; }
+      if (left > best) { best = left; dir = 2; }
+      score[row + j] = best;
+      back[row + j] = dir;
+    }
+  }
+
+  const pairedWith = new Int32Array(n).fill(-1);
+  let i = n;
+  let j = m;
+  while (i > 0 || j > 0) {
+    const dir = back[i * width + j];
+    if (i > 0 && j > 0 && dir === 0) {
+      // Only record a pairing when the tokens actually agree. A mismatch step
+      // still advances both sides -- that is how the alignment absorbs a
+      // misheard word -- but it must not be treated as a located anchor.
+      if (a[i - 1] === b[j - 1]) pairedWith[i - 1] = j - 1;
+      i--; j--;
+    } else if (i > 0 && (dir === 1 || j === 0)) {
+      i--;
+    } else {
+      j--;
+    }
+  }
+  return pairedWith;
+}
+
+/**
+ * Walk `transcriptWords` against `sceneTexts` and return one raw
+ * {startSec, endSec} span per scene (no padding applied yet).
+ *
+ * Uses a GLOBAL alignment, not a greedy forward walk, and the difference is
+ * not academic. The greedy version searched a 12-word lookahead window and,
+ * on a miss, advanced one position blind. A single bad stretch shifted the
+ * cursor permanently -- there was no mechanism to ever recover -- so the error
+ * compounded scene after scene. Measured on the 2026-07-21 Hạnh narration:
+ * scene 10 opened mid-sentence, scene 12 was reading scene 13's words, and
+ * scene 13 collapsed to a single word and ZERO duration.
+ *
+ * The trigger there was numerals. A script says `24`, `207`, `2019`; speech-
+ * to-text hears "hai mươi tư", "hai trăm lẻ bảy", "hai nghìn không trăm mười
+ * chín". One script token against three transcript tokens, repeatedly. A
+ * global alignment charges those as gaps and carries on correctly aligned;
+ * a greedy cursor treats them as position debt it never repays.
  */
 function matchWordsToScenes(transcriptWords, sceneTexts) {
   const normTranscript = transcriptWords.map((w) => normalizeWord(w.word));
-  let cursor = 0; // pointer into transcriptWords
+
+  // Flatten every scene's tokens into one sequence, remembering which scene
+  // each token came from -- the alignment must see the script as one
+  // continuous utterance, exactly as it was spoken.
+  const scriptTokens = [];
+  const tokenScene = [];
+  sceneTexts.forEach((text, sceneIdx) => {
+    for (const t of tokenize(text)) {
+      scriptTokens.push(t);
+      tokenScene.push(sceneIdx);
+    }
+  });
+
+  if (scriptTokens.length === 0 || transcriptWords.length === 0) {
+    return sceneTexts.map(() => ({ startIdx: 0, endIdx: 0, start: 0, end: 0 }));
+  }
+
+  const pairedWith = globalAlign(scriptTokens, normTranscript);
+
+  // Per scene, the first and last transcript indices any of its tokens landed on.
+  const firstIdx = sceneTexts.map(() => -1);
+  const lastIdx = sceneTexts.map(() => -1);
+  for (let k = 0; k < pairedWith.length; k++) {
+    const j = pairedWith[k];
+    if (j < 0) continue;
+    const s = tokenScene[k];
+    if (firstIdx[s] === -1) firstIdx[s] = j;
+    lastIdx[s] = j;
+  }
+
+  // A scene where nothing matched (all its words misheard) gets wedged between
+  // its neighbours rather than dropped, so the timeline stays ordered and
+  // total.
+  for (let s = 0; s < sceneTexts.length; s++) {
+    if (firstIdx[s] !== -1) continue;
+    let prev = -1;
+    for (let t = s - 1; t >= 0; t--) if (lastIdx[t] !== -1) { prev = lastIdx[t]; break; }
+    let next = transcriptWords.length - 1;
+    for (let t = s + 1; t < sceneTexts.length; t++) if (firstIdx[t] !== -1) { next = firstIdx[t]; break; }
+    const anchor = Math.min(Math.max(prev + 1, 0), next);
+    firstIdx[s] = anchor;
+    lastIdx[s] = anchor;
+  }
+
+  // Enforce monotonic, non-overlapping spans. The alignment is monotonic by
+  // construction, but a scene whose only matches were spurious could still
+  // reach backwards; clamping here means downstream code never has to wonder.
   const spans = [];
-
-  for (const sceneText of sceneTexts) {
-    const sceneWords = tokenize(sceneText);
-    if (sceneWords.length === 0 || transcriptWords.length === 0) {
-      // Degenerate case (empty scene text, or ran out of transcript words) —
-      // collapse to a zero-length span anchored at the current cursor so
-      // downstream padding still produces a valid, ordered timeline.
-      const anchorIdx = Math.min(cursor, transcriptWords.length - 1);
-      const anchor = transcriptWords[anchorIdx] ?? { start: 0, end: 0 };
-      spans.push({ startIdx: anchorIdx, endIdx: anchorIdx, start: anchor.start, end: anchor.end });
-      continue;
-    }
-
-    let startIdx = null;
-    let lastMatchedIdx = cursor;
-
-    for (const target of sceneWords) {
-      let found = -1;
-      const windowEnd = Math.min(normTranscript.length, cursor + LOOKAHEAD);
-      for (let j = cursor; j < windowEnd; j++) {
-        if (normTranscript[j] === target) {
-          found = j;
-          break;
-        }
-      }
-      if (found === -1) {
-        // No match nearby — advance positionally by one so we still make
-        // forward progress without a text match (best-effort degrade).
-        if (startIdx === null) startIdx = cursor;
-        lastMatchedIdx = Math.min(cursor, transcriptWords.length - 1);
-        cursor = Math.min(cursor + 1, transcriptWords.length - 1);
-      } else {
-        if (startIdx === null) startIdx = found;
-        lastMatchedIdx = found;
-        cursor = found + 1;
-      }
-    }
-
-    const endIdx = Math.max(lastMatchedIdx, startIdx);
+  let floor = 0;
+  for (let s = 0; s < sceneTexts.length; s++) {
+    const startIdx = Math.min(Math.max(firstIdx[s], floor), transcriptWords.length - 1);
+    const endIdx = Math.min(Math.max(lastIdx[s], startIdx), transcriptWords.length - 1);
     spans.push({
       startIdx,
       endIdx,
       start: transcriptWords[startIdx].start,
       end: transcriptWords[endIdx].end,
     });
+    floor = endIdx + 1 <= transcriptWords.length - 1 ? endIdx + 1 : endIdx;
   }
-
   return spans;
 }
 
@@ -370,6 +462,24 @@ export async function alignAudioToScenes(audioPath, sceneTexts, opts = {}) {
   // Sanity check per design spec Section I: sum of scene durations should
   // roughly match total audio duration (±2s) — flag rather than silently
   // ship a likely mis-alignment.
+  // Per-scene check FIRST, because the total-duration check below cannot see
+  // this class of failure at all: when a scene's words get swallowed by its
+  // neighbour, the spans still tile the audio perfectly and the totals still
+  // agree. That is exactly how the 2026-07-21 misalignment shipped a scene 13
+  // of ZERO seconds without tripping any warning.
+  const starved = timings
+    .map((t, i) => ({ i, sec: t.endSec - t.startSec, words: words[i].length }))
+    .filter((s) => s.sec < 0.5 || s.words < 2);
+  if (starved.length > 0) {
+    console.warn(
+      `[align-audio] WARNING: ${starved.length} scene(s) got almost no audio — ` +
+      starved.map((s) => `#${s.i + 1} (${s.sec.toFixed(2)}s, ${s.words} words)`).join(', ') +
+      `. That usually means the transcript drifted and a neighbouring scene ate their words. ` +
+      `Check the script for numerals (24, 207, 2019): speech-to-text spells them out, so one ` +
+      `script token can face several transcript tokens.`
+    );
+  }
+
   const sumDurations = timings.reduce((acc, t) => acc + (t.endSec - t.startSec), 0);
   if (Math.abs(sumDurations - totalDurationSec) > 2) {
     console.warn(
