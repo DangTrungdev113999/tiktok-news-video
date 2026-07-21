@@ -120,10 +120,16 @@ A drift that keeps every word correct but shifts the timing passes both. So on
 the MP3 path, **still eyeball a rendered frame or two** against the moment
 they should appear. A green run here does not retire that.
 
-Note also that on the **TTS path this gate is a no-op** — caption text comes
-straight from the script there and always did. Its real coverage is forced
-alignment. Run it anyway; a check that only runs when you suspect trouble is a
-check that runs after the damage.
+Its main target is the forced-alignment path. On the TTS path it is nearly,
+but not quite, a no-op — and the exception is worth having. TTS captions are
+built from `ttsText` with the `[tag]` runs stripped, while this gate compares
+against `text`. Those agree only while the convention holds that `ttsText`
+changes delivery and never wording. Write a spelled-out number or a
+pronunciation respelling into `ttsText` and the gate fails — **correctly**,
+because the caption really would be showing words the author did not write.
+
+Run it on both paths. A check that only runs when you already suspect trouble
+is a check that runs after the damage.
 
 ## Step 5 — Render
 
