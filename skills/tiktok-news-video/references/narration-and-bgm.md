@@ -22,11 +22,28 @@ same call — no separate alignment step needed on this path.
 **Keep `words[]` either way.** It's what drives captions in Step 4; don't
 discard it after computing scene timings.
 
+### The TTS path speeds the read up, and hands you the new numbers
+
+`tts-elevenlabs.mjs` time-stretches the narration after synthesis (the user
+picked the amount at init; default is 1.4×) and rescales `timings` and
+`words[]` to match. Everything you receive is already on the stretched
+timeline — do not adjust it again. `references/narration-pace.md` explains why
+this exists at all, since `eleven_v3` silently ignores `voice_settings.speed`.
+
+The MP3 path does **not** stretch. A narration the user recorded or supplied
+already has the pace they wanted.
+
 ### Sanity check (do not skip)
 
 The sum of `(endSec - startSec)` across scenes should roughly match the full
 audio duration (±2s). If it doesn't, that's a bug to fix — re-check the
 alignment / tag-stripping — not something to silently ship.
+
+**That check alone is not enough on the MP3 path.** It cannot see the failure
+where one screen's words are swallowed by its neighbour: the spans still tile
+the audio perfectly and the totals still agree. `align-audio.mjs` now warns
+separately about any screen that ends up with under 0.5s or under 2 words.
+Treat that warning as fatal — a screen with no words has no captions.
 
 ### Timing gaps are handled for you
 

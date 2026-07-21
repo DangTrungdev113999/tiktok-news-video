@@ -38,6 +38,7 @@ import readline from "node:readline";
 import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { CONFIG_DIR, CONFIG_PATH, ENV_PATH, DEFAULT_WORKSPACE_DIR, ensureWorkspaceSubdirs } from "./workspace.mjs";
+import { PACE_LEVELS, DEFAULT_PACE_LABEL, describe, paceLevel } from "./narration-pace.mjs";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -46,7 +47,14 @@ const REMOTION_DIR = path.join(REPO_ROOT, "remotion");
 const REMOTION_PKG = path.join(REMOTION_DIR, "package.json");
 const ENV_EXAMPLE_PATH = path.join(REPO_ROOT, ".env.example");
 
-const DEFAULT_VOICE_ID = "FHhpndubmejSghqiumSv";
+// Hạnh -- nữ trẻ giọng Bắc, "Smooth, Clear and Feminine". Chọn 2026-07-21
+// sau khi thu thử 14 giọng Việt trên cùng một kịch bản.
+//
+// Giá trị cũ (FHhpndubmejSghqiumSv) là "thu-le-vn", mà mô tả chính thức của
+// nó trên ElevenLabs là "Vietnamese male voice cloned for cross-lingual
+// Indonesian TTS" -- một giọng clone để đọc tiếng INDONESIA. Nó chưa bao giờ
+// được ai chọn cho tiếng Việt; nó chỉ là giá trị còn sót lại. Đừng khôi phục.
+const DEFAULT_VOICE_ID = "pGapy9MNHCukzJtjavF0";
 const MIN_NODE_MAJOR = 18;
 
 const IS_MAC = process.platform === "darwin";
@@ -342,6 +350,7 @@ async function stepConfigure(ask) {
       log(`  - Voice ID: ${existingConfig?.voiceId || existingEnv.ELEVENLABS_VOICE_ID}`);
     }
     log(`  - ElevenLabs API key: ${existingEnv.ELEVENLABS_API_KEY ? "đã có" : "chưa có"}`);
+    if (existingConfig?.narrationPace) log(`  - Nhịp đọc: ${existingConfig.narrationPace}`);
     const answer = await ask("\nBạn có muốn cấu hình lại không? (y/N): ");
     doConfigure = answer.trim().toLowerCase().startsWith("y");
   }
@@ -354,6 +363,7 @@ async function stepConfigure(ask) {
       workspaceDir,
       voiceId: existingConfig?.voiceId || existingEnv.ELEVENLABS_VOICE_ID || DEFAULT_VOICE_ID,
       apiKey: existingEnv.ELEVENLABS_API_KEY || "",
+      narrationPace: existingConfig?.narrationPace || DEFAULT_PACE_LABEL,
       bgmLibrary: Array.isArray(existingConfig?.bgmLibrary) ? existingConfig.bgmLibrary : [],
       wrote: false,
     };
@@ -377,29 +387,73 @@ async function stepConfigure(ask) {
   log(`   (chứa: ${workspaceDir}/assets, /bgm-library, /output)`);
 
   // --- ElevenLabs API key ---
-  log("\nElevenLabs API key dùng để tự động tạo giọng đọc (TTS) cho video.");
-  log("Nếu bạn luôn tự cung cấp file MP3 lời đọc riêng, có thể bỏ qua bước này (nhấn Enter).");
-  const apiKeyAnswer = await ask("Nhập ElevenLabs API key (Enter để bỏ qua): ");
+  // Hai thứ khác nhau, hỏi riêng: key là tài khoản (bí mật, tính tiền theo
+  // ký tự), voice_id là GIỌNG (công khai, ai cũng dùng chung được).
+  section("Giọng đọc: cần HAI thứ");
+  log("1) API key  — tài khoản ElevenLabs của bạn. Bí mật, và nó tính tiền theo số ký tự.");
+  log("2) voice_id — chọn ai đọc. Không bí mật; đây là mã giọng lấy từ thư viện chung.");
+  log("");
+  log("Lấy API key ở: https://elevenlabs.io/app/settings/api-keys");
+  log("Nếu bạn luôn tự cung cấp file MP3 lời đọc riêng, có thể bỏ qua key (nhấn Enter).");
+  const apiKeyAnswer = await ask("\nNhập ElevenLabs API key (Enter để bỏ qua): ");
   const apiKey = apiKeyAnswer.trim();
 
   // --- Voice ID ---
-  const voiceAnswer = await ask(
-    `\nNhập ElevenLabs voice_id (Enter để dùng mặc định: ${DEFAULT_VOICE_ID}): `
-  );
+  log("\nvoice_id là mã giọng đọc, lấy trong Voice Library của ElevenLabs.");
+  log("Mở https://elevenlabs.io/app/voice-library, lọc ngôn ngữ Vietnamese, nghe thử,");
+  log("bấm vào giọng nào bạn thích rồi copy ID của nó.");
+  log(`\nMặc định là ${DEFAULT_VOICE_ID} — "Hạnh", nữ trẻ giọng Bắc, rõ chữ, hợp tin tức.`);
+  log("(Chọn sau khi thu thử 14 giọng Việt trên cùng một kịch bản.)");
+  const voiceAnswer = await ask("\nNhập voice_id (Enter để dùng Hạnh): ");
   const voiceId = voiceAnswer.trim() || DEFAULT_VOICE_ID;
+
+  // --- Mức kéo nhanh lời đọc ---
+  const narrationPace = await askNarrationPace(existingConfig?.narrationPace);
 
   return {
     workspaceDir,
     voiceId,
     apiKey,
+    narrationPace,
     bgmLibrary: Array.isArray(existingConfig?.bgmLibrary) ? existingConfig.bgmLibrary : [],
     wrote: true,
   };
 }
 
-function writeConfigFiles({ workspaceDir, voiceId, apiKey, bgmLibrary }) {
+/**
+ * Hỏi mức kéo nhanh lời đọc.
+ *
+ * Vì sao phải có bước này: eleven_v3 BỎ QUA tham số `speed` (đã đo, xem
+ * scripts/narration-pace.mjs). Nên tốc độ đọc chỉ có thể đến từ một bước kéo
+ * sau khi tổng hợp -- và nó là thứ người dùng phải tự chọn, không phải thứ
+ * đoán hộ, vì ngưỡng nghe được của mỗi người mỗi khác.
+ *
+ * Nhãn "2x".."5x" là do tác giả đặt và KHÔNG phải hệ số thật ("5x" = nấc thứ
+ * năm, tức 1.5x). Nên mỗi dòng bắt buộc in kèm hệ số thật và số từ/phút --
+ * nếu chỉ đưa cái nhãn thì người chọn đang bị đánh lừa.
+ */
+async function askNarrationPace(existing) {
+  section("Nhịp đọc");
+  log("ElevenLabs đọc tiếng Việt khá thong thả. Video tin tức TikTok cần nhanh hơn,");
+  log("nên sau khi tạo giọng, plugin có thể kéo nhanh lời đọc lên. Cao độ giữ nguyên");
+  log("(không bị the thé), nhưng kéo càng mạnh thì đuôi từ càng dễ nghe rung.");
+  log("");
+  for (const [i, level] of PACE_LEVELS.entries()) {
+    const isDefault = level.label === (existing ?? DEFAULT_PACE_LABEL);
+    log(`  ${i + 1}. ${level.label.padEnd(5)} ${describe(level)}${isDefault ? "   ← mặc định" : ""}`);
+  }
+  log("");
+  log("Đổi lúc nào cũng được: sửa \"narrationPace\" trong config.local.json.");
+  const answer = await ask(`Chọn 1-${PACE_LEVELS.length} (Enter để giữ mặc định): `);
+  const picked = PACE_LEVELS[Number(answer.trim()) - 1];
+  const chosen = picked?.label ?? existing ?? DEFAULT_PACE_LABEL;
+  log(`✅ Nhịp đọc: ${chosen} (atempo ${paceLevel(chosen).tempo.toFixed(2)}x)`);
+  return chosen;
+}
+
+function writeConfigFiles({ workspaceDir, voiceId, apiKey, narrationPace, bgmLibrary }) {
   fs.mkdirSync(CONFIG_DIR, { recursive: true });
-  const configObj = { workspaceDir, voiceId, bgmLibrary: bgmLibrary || [] };
+  const configObj = { workspaceDir, voiceId, narrationPace: narrationPace || DEFAULT_PACE_LABEL, bgmLibrary: bgmLibrary || [] };
   fs.writeFileSync(CONFIG_PATH, JSON.stringify(configObj, null, 2) + "\n", "utf8");
 
   let envContent;
@@ -472,6 +526,7 @@ function printFinalChecklist({ ffmpegInfo, remotionResult, config }) {
   log("");
   log(`Thư mục workspace (assets/bgm-library/output): ${config.workspaceDir || "(chưa cấu hình)"}`);
   log(`Voice ID mặc định: ${config.voiceId}`);
+  log(`Nhịp đọc: ${config.narrationPace} (atempo ${paceLevel(config.narrationPace).tempo.toFixed(2)}x)`);
   if (config.wrote) {
     log(`\nĐã ghi cấu hình vào:\n  - ${CONFIG_PATH}\n  - ${ENV_PATH}`);
   }

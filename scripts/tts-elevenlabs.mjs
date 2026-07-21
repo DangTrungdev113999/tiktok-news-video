@@ -16,10 +16,11 @@
 //   import { synthesizeScript } from './tts-elevenlabs.mjs'
 
 import { spawn } from 'node:child_process';
-import { readFile, writeFile } from 'node:fs/promises';
+import { readFile, writeFile, rename } from 'node:fs/promises';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
-import { CONFIG_DIR } from './workspace.mjs';
+import { CONFIG_DIR, readConfig } from './workspace.mjs';
+import { paceLevel, DEFAULT_PACE_LABEL, stretchAudio, rescaleTimeline } from './narration-pace.mjs';
 
 // NOTE (checked again 2026-07-17 via ElevenLabs docs + web search): the
 // `/with-timestamps` endpoint's documented OpenAPI schema only enumerates
@@ -286,6 +287,9 @@ function round3(n) {
  * @param {string} [opts.voiceId]
  * @param {string} [opts.apiKey]
  * @param {boolean} [opts.mock]
+ * @param {string} [opts.paceLabel] - one of narration-pace.mjs's PACE_LEVELS
+ *   labels ('none' | '2x' | '3x' | '4x' | '5x'). Omitted, it reads
+ *   `narrationPace` from the user's config, then falls back to the default.
  * @returns {Promise<{ audioPath: string, timings: Array<{startSec:number,endSec:number}>, words: Array<Array<{text:string,startSec:number,endSec:number}>>, mode: 'live'|'mock' }>}
  *   `words` is one array per scene (same order/length as `timings`), each
  *   entry a word with absolute-to-audio {startSec, endSec} (NOT gap-closed
@@ -389,7 +393,31 @@ export async function synthesizeScript(scenes, opts = {}) {
     );
   }
 
-  return { audioPath: outAudioPath, timings, words, mode: 'live' };
+  // Pace. eleven_v3 ignores voice_settings.speed (measured -- see
+  // narration-pace.mjs for the numbers), so a faster read can only be a
+  // time-stretch applied here, AFTER the timestamps are derived.
+  //
+  // Order matters: stretch the audio, then divide every timestamp by the same
+  // factor. Both `timings` AND `words` have to be rescaled or the karaoke
+  // drifts further behind the voice with every passing second.
+  const level = paceLevel(opts.paceLabel ?? readConfig().narrationPace ?? DEFAULT_PACE_LABEL);
+  if (level.tempo === 1) {
+    return { audioPath: outAudioPath, timings, words, mode: 'live', pace: level };
+  }
+
+  // ffmpeg will not read and write the same file in one pass, so stretch to a
+  // sibling and swap it into place -- callers were handed outAudioPath and
+  // expect the finished narration to be there.
+  const stretchedPath = outAudioPath.replace(/(\.[^.]+)$/, '.stretched$1');
+  await stretchAudio(outAudioPath, stretchedPath, level.tempo);
+  await rename(stretchedPath, outAudioPath);
+  const scaled = rescaleTimeline({ timings, words }, level.tempo);
+  console.log(
+    `[tts-elevenlabs] pace ${level.label}: atempo ${level.tempo.toFixed(2)}x — ` +
+    `${audioDurationEstimate.toFixed(1)}s -> ${(audioDurationEstimate / level.tempo).toFixed(1)}s`
+  );
+
+  return { audioPath: outAudioPath, ...scaled, mode: 'live', pace: level };
 }
 
 // ---------------------------------------------------------------------------
@@ -419,7 +447,7 @@ if (isMain()) {
   const [scenesPath, outAudioPath, outTimingsPath, outWordsPath] = positional;
   if (!scenesPath || !outAudioPath || !outTimingsPath) {
     console.error(
-      'Usage: node scripts/tts-elevenlabs.mjs <scenes.json> <outAudio.mp3> <outTimings.json> [outWords.json] [--mock] [--voice-id=...]'
+      'Usage: node scripts/tts-elevenlabs.mjs <scenes.json> <outAudio.mp3> <outTimings.json> [outWords.json] [--mock] [--voice-id=...] [--pace=none|2x|3x|4x|5x]'
     );
     process.exit(1);
   }
@@ -429,6 +457,7 @@ if (isMain()) {
   synthesizeScript(scenes, {
     outAudioPath: path.resolve(outAudioPath),
     voiceId: flags['voice-id'],
+    paceLabel: flags.pace,
     mock: Boolean(flags.mock),
   })
     .then(async ({ audioPath, timings, words, mode }) => {

@@ -1,7 +1,7 @@
 ---
 name: tiktok-news-video-init
 user-invocable: true
-description: "One-time machine setup for the tiktok-news-video plugin: verifies/installs Node+ffmpeg+Remotion deps per OS, then prompts for output folder, ElevenLabs API key, and voice_id. Run this before the first /tiktok-news-video on a new machine."
+description: "One-time machine setup for the tiktok-news-video plugin: verifies/installs Node+ffmpeg+Remotion deps per OS, then prompts for output folder, ElevenLabs API key, voice_id, and narration pace. Run this before the first /tiktok-news-video on a new machine."
 argument-hint: ""
 ---
 
@@ -10,8 +10,25 @@ argument-hint: ""
 Run `npm run init` (equivalently `node scripts/init.mjs`) from the plugin
 repo root. The script itself does the real work: OS detection, dependency
 checks/installs for ffmpeg + Remotion's headless Chrome, a pass/fail
-verification checklist, then prompts for the output folder / ElevenLabs key /
-voice_id and writes `config.local.json` + `.env`.
+verification checklist, then prompts for the output folder, ElevenLabs API key,
+voice_id, and narration pace, and writes `config.local.json` + `.env`.
+
+## The four things it asks for
+
+**Output folder** — where assets go in and videos come out.
+
+**ElevenLabs API key** and **voice_id** are two different things and the script
+asks for them separately. The key is the account: secret, billed per character.
+The voice_id says who reads: public, shared, copied out of the Voice Library.
+A user who has one still needs the other.
+
+**Narration pace** — how much the finished read gets sped up, offered as
+`none / 2x / 3x / 4x / 5x` with the real factor and word rate on every line.
+It has to be asked because `eleven_v3` ignores `voice_settings.speed`
+outright, so pace comes from a time-stretch afterwards, and how hard that can
+be pushed before it sounds processed is a judgement only the listener can
+make. `references/narration-pace.md` in the main skill has the measurements.
+The labels are notch names, not multipliers — `5x` is 1.5×.
 
 Your job here is just to:
 1. Invoke it (via Bash) and stream its output to the user as it runs — it's

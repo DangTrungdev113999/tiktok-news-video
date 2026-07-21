@@ -20,6 +20,7 @@ one for the step you're on rather than reading them all up front.
 | `references/script-input.md` | Step 1: parse the scene script (used verbatim) |
 | `references/asset-naming.md` | How `anh_1` / `ảnh 1` resolves to a real file |
 | `references/narration-and-bgm.md` | Steps 2–3: TTS or forced alignment, BGM choice |
+| `references/narration-pace.md` | Why the read gets sped up after synthesis, and by how much |
 | `references/motion.md` | Which movement each asset gets, and per-asset overrides |
 | `references/tags/README.md` | The tag grammar; one file per tag key, opened on demand |
 | `references/hook-and-brand.md` | The hook scene and resolving which brand kit to use |
