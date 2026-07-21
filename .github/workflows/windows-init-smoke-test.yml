@@ -98,10 +98,17 @@ jobs:
           # had it. That proves the mechanism, NOT that employees hit this
           # state -- only a real employee machine can show that.
           $nodeExe = (Get-Command node).Source
-          $nodeDir = Split-Path $nodeExe
-          $env:PATH = ($env:PATH -split ';' | Where-Object { $_ -and $_ -ne $nodeDir }) -join ';'
-          if (Get-Command npm -ErrorAction SilentlyContinue) {
-            Write-Host "FAIL: npm is still on PATH, this test would pass for the wrong reason"; exit 1
+          # Drop EVERY directory that offers node or npm, not just node's own:
+          # the runner also carries an npm shim in a separate prefix directory,
+          # which left npm reachable and would have made this test pass without
+          # testing anything.
+          $env:PATH = ($env:PATH -split ';' | Where-Object {
+            $_ -and -not (Test-Path (Join-Path $_ 'node.exe')) -and -not (Test-Path (Join-Path $_ 'npm.cmd'))
+          }) -join ';'
+          foreach ($c in @('node', 'npm')) {
+            if (Get-Command $c -ErrorAction SilentlyContinue) {
+              Write-Host "FAIL: $c is still on PATH, this test would pass for the wrong reason"; exit 1
+            }
           }
           Write-Host "npm is off PATH; node called absolutely: $nodeExe"
 
