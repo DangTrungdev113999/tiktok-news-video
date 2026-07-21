@@ -40,29 +40,48 @@ not multipliers — `5x` is 1.5×. `references/narration-pace.md` in the main
 skill has the measurements and explains why the stretch exists at all
 (`eleven_v3` ignores `voice_settings.speed` outright).
 
-## If the command dies with "command not found"
+## Step 0: there is no Node.js on the employee's machine
 
-`npm`/`node` missing means the machine has no Node.js, and **nothing in this
-plugin can run** — `init.mjs` is itself a Node script, so it cannot install its
-own interpreter. This is the one prerequisite no script can cover.
+Assume there isn't. These are non-technical users on fresh Windows laptops,
+and `init.mjs` is itself a Node script — so this is the one thing that has to
+be handled before the plugin can run at all. **You install it. Do not ask the
+employee to.**
 
-When that happens: **stop, and do not try another command.** Guessing at
-`winget install OpenJS.NodeJS` or a package manager is wrong twice over — a
-PATH change from a fresh install does not reach the next Bash call anyway, so
-even a successful install looks like another failure. Instead say, in
-Vietnamese:
+Run `node -v` first. If it prints a version ≥ 18, skip this whole section.
 
-> Máy bạn chưa có Node.js — đây là phần mềm nền mà plugin cần để chạy, và
-> plugin không tự cài nó được. Bạn làm 3 bước này, một lần duy nhất:
+If it doesn't, install and then **call Node by absolute path**:
+
+```
+winget install -e --id OpenJS.NodeJS.LTS --accept-package-agreements --accept-source-agreements
+```
+
+Then use `C:\Program Files\nodejs\node.exe` for everything — `node` on its own
+will still fail. That is not a quirk of this plugin: **Windows reads PATH once,
+when a process starts**, so the PATH entry winget just created does not exist
+for your next Bash call. Retrying `node -v` and concluding the install failed
+is the trap here; the file is on disk, only the name lookup is stale. (The same
+fact is why init vendors its own ffmpeg — see `scripts/ffmpeg-path.mjs`.)
+
+So:
+
+```
+"C:\Program Files\nodejs\node.exe" scripts/init.mjs
+```
+
+`init.mjs` resolves `npm`/`npx` next to whichever node is running it, so the
+absolute path propagates through the Remotion install by itself.
+
+If `winget` is missing too (older Windows 10, or blocked by policy), stop and
+say this — installing Node is a normal double-click, not coder work:
+
+> Máy bạn chưa có Node.js — phần mềm nền mà plugin cần. Bạn làm 3 bước này,
+> một lần duy nhất:
 > 1. Vào https://nodejs.org, tải bản **LTS**
 > 2. Cài bằng cách bấm Next đến hết
 > 3. **Đóng hẳn app này rồi mở lại**, sau đó gõ lại lệnh init
->
-> (Không chắc máy đã có chưa thì cứ cài — cài đè lên không sao cả.)
 
-Then end the turn. The app restart in step 3 is what makes the new Node
-visible; without it the next attempt fails identically and the user concludes
-the plugin is broken.
+Step 3 is what makes the new Node visible; without the restart the next attempt
+fails identically and the employee concludes the plugin is broken.
 
 ## Running it
 

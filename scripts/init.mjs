@@ -488,6 +488,15 @@ function printManualFfmpegWindowsInstructions() {
 // Bước 4: Cài dependency Remotion + tải Chrome Headless Shell
 // ---------------------------------------------------------------------------
 
+/**
+ * `name` nằm cạnh file node đang chạy thì trả về đường dẫn tuyệt đối, không
+ * thì trả lại chính `name` để PATH lo (trường hợp máy đã có Node sẵn).
+ */
+export function siblingOfNode(name) {
+  const candidate = path.join(path.dirname(process.execPath), name);
+  return fs.existsSync(candidate) ? candidate : name;
+}
+
 function stepRemotion() {
   section("Bước 4: Cài đặt Remotion (bộ máy render video)");
 
@@ -500,8 +509,15 @@ function stepRemotion() {
     return { installed: false, version: null };
   }
 
-  const npmCmd = IS_WIN ? "npm.cmd" : "npm";
-  const npxCmd = IS_WIN ? "npx.cmd" : "npx";
+  // npm/npx nằm CẠNH file node đang chạy — tìm ở đó trước, đừng trông vào PATH.
+  //
+  // Máy nhân viên không có Node sẵn. Agent cài Node rồi gọi init bằng đường
+  // dẫn tuyệt đối (C:\Program Files\nodejs\node.exe), vì PATH mới cài chưa
+  // tới được lệnh kế tiếp. Nhưng lúc đó `npm.cmd` trơn cũng không tìm thấy vì
+  // cùng lý do — và bước cài Remotion sẽ chết ngay sau khi Node vừa chạy
+  // được, một thất bại rất khó hiểu.
+  const npmCmd = siblingOfNode(IS_WIN ? "npm.cmd" : "npm");
+  const npxCmd = siblingOfNode(IS_WIN ? "npx.cmd" : "npx");
 
   // shell:true is required on Windows: npm/npx ship as .cmd batch files, and
   // since Node's CVE-2024-27980 fix, spawning a .cmd/.bat without shell:true
@@ -616,7 +632,12 @@ async function stepConfigure(ask, { advanced = false } = {}) {
   // Chế độ mặc định: một câu hỏi duy nhất, và chỉ khi thật sự còn thiếu key.
   // -------------------------------------------------------------------------
   if (!advanced) {
-    const workspaceDir = path.resolve(savedWorkspace || expandHome(DEFAULT_WORKSPACE_DIR));
+    // Hỏi thư mục bằng cách KÉO THẢ, không phải gõ. Người quản trị phát sẵn
+    // cho nhân viên một thư mục mẫu; nhân viên chỉ việc kéo nó vào ô chat và
+    // đường dẫn tự hiện ra. Không dò, không đoán, không phải nhớ vị trí.
+    const workspaceDir = savedWorkspace
+      ? path.resolve(savedWorkspace)
+      : await askWorkspaceDir(ask, null);
     ensureWorkspaceSubdirs(workspaceDir);
 
     if (savedKey) {
@@ -629,11 +650,10 @@ async function stepConfigure(ask, { advanced = false } = {}) {
       return { workspaceDir, voiceId: savedVoiceId, apiKey: savedKey, narrationPace: savedPace, bgmLibrary, wrote: false };
     }
 
-    log(`Thư mục làm việc: ${workspaceDir}`);
-    log("   (bỏ ảnh/video vào đây; video render xong cũng nằm ở đây)");
+    log("");
     log(`Giọng đọc: Hạnh — nữ trẻ giọng Bắc, rõ chữ, hợp tin tức. Nhịp đọc: ${savedPace}.`);
     log("");
-    log("Chỉ còn MỘT thứ cần bạn điền: API key ElevenLabs (để plugin tự lồng tiếng).");
+    log("Còn một thứ nữa cần bạn điền: API key ElevenLabs (để plugin tự lồng tiếng).");
     log("Lấy key ở: https://elevenlabs.io/app/settings/api-keys");
     log("Mỗi người dùng key riêng của mình, không dùng chung.");
     const apiKey = await askApiKey(ask);
@@ -665,24 +685,8 @@ async function stepConfigure(ask, { advanced = false } = {}) {
   log(
     "Đây LUÔN là một thư mục bình thường, cố định trên máy bạn — không đổi dù plugin có update bao nhiêu lần."
   );
-  // Cách lấy đường dẫn dễ nhất trên từng hệ, nói ngay tại chỗ cần dùng. Cả
-  // hai cách đều cho ra chuỗi dán được thẳng vào đây: expandHome() bóc dấu
-  // nháy mà "Copy as path" của Windows tự thêm vào.
-  log(
-    IS_WIN
-      ? 'Mẹo: mở File Explorer tới thư mục đó, giữ Shift + chuột phải vào nó → "Copy as path", rồi dán vào đây.'
-      : 'Mẹo: mở Finder tới thư mục đó, chuột phải → giữ phím Option → "Copy ... as Pathname", rồi dán vào đây.'
-  );
-  const workspaceAnswer = await ask(
-    `Bạn muốn dùng thư mục workspace nào?\n(Enter để dùng mặc định: ${savedWorkspace || DEFAULT_WORKSPACE_DIR})\n> `
-  );
-  const workspaceDir = path.resolve(
-    expandHome(workspaceAnswer.trim() || savedWorkspace || DEFAULT_WORKSPACE_DIR)
-  );
-
+  const workspaceDir = await askWorkspaceDir(ask, savedWorkspace);
   ensureWorkspaceSubdirs(workspaceDir);
-  log(`✅ Thư mục workspace sẵn sàng: ${workspaceDir}`);
-  log(`   (chứa: ${workspaceDir}/assets, /bgm-library, /output)`);
 
   // --- ElevenLabs API key ---
   // Hai thứ khác nhau, hỏi riêng: key là tài khoản (bí mật, tính tiền theo
@@ -707,6 +711,29 @@ async function stepConfigure(ask, { advanced = false } = {}) {
   const narrationPace = await askNarrationPace(ask, existingConfig?.narrationPace);
 
   return { workspaceDir, voiceId, apiKey, narrationPace, bgmLibrary, wrote: true };
+}
+
+/**
+ * Hỏi thư mục làm việc — bằng cách kéo thả, không bắt gõ đường dẫn.
+ *
+ * Kéo một thư mục từ File Explorer/Finder thả vào ô chat sẽ tự chèn đường dẫn
+ * đầy đủ. Đó là thao tác duy nhất ở đây mà người không rành máy làm được chắc
+ * chắn — gõ tay một đường dẫn Windows dài là chỗ sai chính tả, còn tự đi dò
+ * xem Desktop thật nằm ở đâu là đoán mò một thứ mà người quản trị đã quyết
+ * sẵn khi phát thư mục mẫu cho nhân viên.
+ *
+ * expandHome() bóc cặp nháy kép mà Windows tự thêm vào khi kéo thả / "Copy as
+ * path", nên chuỗi dán vào dùng được nguyên trạng.
+ */
+async function askWorkspaceDir(ask, savedWorkspace) {
+  const fallback = savedWorkspace || DEFAULT_WORKSPACE_DIR;
+  log("");
+  log("Thư mục làm việc: nơi chứa ảnh/video và nơi video render xong được lưu.");
+  log("👉 KÉO thư mục đó từ File Explorer/Finder rồi THẢ vào ô chat này — đường dẫn sẽ tự hiện ra.");
+  const answer = await ask(`(hoặc Enter để dùng: ${fallback})\n> `);
+  const dir = path.resolve(expandHome(answer.trim() || fallback));
+  log(`✅ Thư mục làm việc: ${dir}`);
+  return dir;
 }
 
 /**

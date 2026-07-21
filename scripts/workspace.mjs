@@ -30,41 +30,19 @@ export const CONFIG_DIR = path.join(os.homedir(), '.tiktok-news-video');
 export const CONFIG_PATH = path.join(CONFIG_DIR, 'config.local.json');
 export const ENV_PATH = path.join(CONFIG_DIR, '.env');
 /**
- * Suggested workspace folder.
+ * Fallback workspace folder, offered when the user just presses Enter at init.
  *
- * On WINDOWS this deliberately does NOT go on the Desktop.
+ * Init ASKS for this folder (the employee drags a prepared template folder
+ * into the chat box), so this is only a fallback -- not a location anything
+ * is expected to guess correctly.
  *
- * "Desktop" on Windows is not a fixed path. OneDrive's Known Folder Move is
- * on by default on many Microsoft 365 / Windows 11 corporate machines and
- * relocates it to `%OneDrive%\Desktop`; Group Policy folder redirection can
- * point it at a network share; and `%USERPROFILE%\Desktop` may survive as a
- * stale leftover in both cases. An earlier version of this function chased
- * the moving target by preferring `%OneDrive%\Desktop` -- which resolved the
- * path correctly and thereby made the real problem worse:
- *
- * A workspace on a KFM desktop is a workspace INSIDE OneDrive sync. This
- * folder holds every source photo, every intermediate, and every rendered
- * MP4. Syncing it means uploading hundreds of MB per episode, and -- the part
- * that actually breaks things -- OneDrive can hold a handle on a file that
- * Remotion is still writing, which surfaces as an unexplained EPERM
- * mid-render.
- *
- * `%USERPROFILE%` itself is never a redirected known folder, so a sibling of
- * Desktop is both stable and unsynced. The employee never has to navigate
- * here anyway: assets arrive via clean-source, and the finished video is
- * revealed in Explorer at the end of a render.
- *
- * macOS keeps the Desktop default -- iCloud Desktop sync is opt-in there, and
- * this is where the author's existing workspace already lives.
+ * The home directory, deliberately: it always exists and it is never one of
+ * Windows' redirectable known folders. An earlier version tried to locate the
+ * real Desktop across OneDrive Known Folder Move and Group Policy
+ * redirection. That was solving a problem nobody had -- the folder is handed
+ * in, not discovered.
  */
-function defaultWorkspaceDir() {
-  if (process.platform === 'win32') {
-    return path.join(os.homedir(), 'tiktok-news-video-workspace');
-  }
-  return path.join(os.homedir(), 'Desktop', 'tiktok-news-video-workspace');
-}
-
-export const DEFAULT_WORKSPACE_DIR = defaultWorkspaceDir();
+export const DEFAULT_WORKSPACE_DIR = path.join(os.homedir(), 'tiktok-news-video-workspace');
 
 /** Read config.local.json from the fixed CONFIG_DIR. Returns {} if missing/invalid. */
 export function readConfig() {
