@@ -964,6 +964,25 @@ export async function buildSpec({ scenes, workspaceDir, narrationAudioPath, bgmA
     if (!brandKit) {
       throw new Error('buildSpec: a scene has isHook: true but no brandKit was provided (resolve one via scripts/brand-kit.mjs first).');
     }
+    // A brandKit is not just brand.json. `getBrand()` adds `slug` and
+    // `hookBgPath` after checking the background file is readable; hand
+    // buildSpec the raw JSON instead and every field here is present except
+    // the one the renderer dereferences.
+    //
+    // Without this check the run reached Remotion and died at frame 5 with
+    // "undefined was passed to staticFile()" -- a message naming neither the
+    // field nor the file, thrown from inside React, AFTER the ElevenLabs call
+    // had already been paid for. Everything that can abort a run belongs
+    // before the paid step; this one was arriving three steps late.
+    for (const field of ['hookBgPath', 'badgeLabel', 'displayName']) {
+      if (!brandKit[field]) {
+        throw new Error(
+          `buildSpec: brandKit is missing "${field}". Load it with getBrand(slug) from ` +
+            `scripts/brand-kit.mjs -- reading brand/<slug>/brand.json directly skips the ` +
+            `fields that file does not contain.`,
+        );
+      }
+    }
     spec.brandKit = brandKit;
   }
   return spec;
