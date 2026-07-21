@@ -40,6 +40,32 @@ not multipliers — `5x` is 1.5×. `references/narration-pace.md` in the main
 skill has the measurements and explains why the stretch exists at all
 (`eleven_v3` ignores `voice_settings.speed` outright).
 
+## If the command dies with "command not found"
+
+`npm`/`node` missing means the machine has no Node.js, and **nothing in this
+plugin can run** — `init.mjs` is itself a Node script, so it cannot install its
+own interpreter. This is the one prerequisite no script can cover.
+
+When that happens: **stop, and do not try another command.** Guessing at
+`winget install OpenJS.NodeJS` or a package manager is wrong twice over — a
+PATH change from a fresh install does not reach the next Bash call anyway, so
+even a successful install looks like another failure. Instead say, in
+Vietnamese:
+
+> Máy bạn chưa có Node.js — đây là phần mềm nền mà plugin cần để chạy, và
+> plugin không tự cài nó được. Bạn làm 3 bước này, một lần duy nhất:
+> 1. Vào https://nodejs.org, tải bản **LTS**
+> 2. Cài bằng cách bấm Next đến hết
+> 3. **Đóng hẳn app này rồi mở lại**, sau đó gõ lại lệnh init
+>
+> (Không chắc máy đã có chưa thì cứ cài — cài đè lên không sao cả.)
+
+Then end the turn. The app restart in step 3 is what makes the new Node
+visible; without it the next attempt fails identically and the user concludes
+the plugin is broken.
+
+## Running it
+
 Your job here is just to:
 1. Invoke it (via Bash) and stream its output to the user as it runs — it's
    interactive (prompts), so don't background it.
