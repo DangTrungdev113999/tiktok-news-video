@@ -29,7 +29,32 @@ import path from 'node:path';
 export const CONFIG_DIR = path.join(os.homedir(), '.tiktok-news-video');
 export const CONFIG_PATH = path.join(CONFIG_DIR, 'config.local.json');
 export const ENV_PATH = path.join(CONFIG_DIR, '.env');
-export const DEFAULT_WORKSPACE_DIR = path.join(os.homedir(), 'Desktop', 'tiktok-news-video-workspace');
+/**
+ * Suggested workspace folder.
+ *
+ * On Windows, `homedir()/Desktop` is frequently NOT the desktop the user sees.
+ * OneDrive's Known Folder Move is on by default on many Microsoft 365 and
+ * Windows 11 corporate machines, which relocates the real Desktop to
+ * `%OneDrive%\Desktop`. Defaulting past that would silently create a second,
+ * invisible folder and then tell an employee to put their photos "on the
+ * Desktop" -- into a folder that does not appear on their desktop.
+ *
+ * So prefer OneDrive's Desktop when the environment says one exists AND it is
+ * really there. This is only the default offered at init; the user can type
+ * any path, and whatever they pick is echoed back as an absolute path.
+ */
+function desktopDir() {
+  if (process.platform === 'win32') {
+    const oneDrive = process.env.OneDrive || process.env.OneDriveCommercial || process.env.OneDriveConsumer;
+    if (oneDrive) {
+      const candidate = path.join(oneDrive, 'Desktop');
+      if (fs.existsSync(candidate)) return candidate;
+    }
+  }
+  return path.join(os.homedir(), 'Desktop');
+}
+
+export const DEFAULT_WORKSPACE_DIR = path.join(desktopDir(), 'tiktok-news-video-workspace');
 
 /** Read config.local.json from the fixed CONFIG_DIR. Returns {} if missing/invalid. */
 export function readConfig() {

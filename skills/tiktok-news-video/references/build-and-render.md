@@ -133,7 +133,15 @@ is a check that runs after the damage.
 
 ## Step 5 — Render
 
-Create the dated + slugged output folder first:
+Create the dated + slugged output folder first.
+
+**The slug must be `[a-z0-9-]` only** — strip Vietnamese diacritics, lowercase,
+replace every run of anything else with a single `-`, and trim leading and
+trailing `-`. This is not tidiness. Windows forbids `< > : " / \ | ? *` in
+filenames where macOS forbids only `/`, and Vietnamese news headlines carry
+colons and question marks constantly: *"Giá vàng: tăng mạnh?"* slugged loosely
+becomes a folder Windows refuses to create, and the run dies after the
+narration has been paid for.
 
 ```
 $WORKSPACE_DIR/output/<YYYY-MM-DD>_<slug>/
