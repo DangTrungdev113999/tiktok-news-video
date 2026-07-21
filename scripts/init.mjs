@@ -626,7 +626,9 @@ function printFinalChecklist({ ffmpegInfo, remotionResult, config }) {
     ok: !!ffmpegInfo,
     text: ffmpegInfo
       ? `ffmpeg đã cài đặt: ${ffmpegInfo}`
-      : "ffmpeg CHƯA sẵn sàng. Nếu Bước 3 ở trên vừa tự cài xong ffmpeg lần đầu, đây là bình thường (Windows cần nạp lại PATH) — đóng hẳn rồi mở lại Terminal/PowerShell hoặc Claude Desktop/ChatGPT app, sau đó chạy lại init. Nếu đã restart mà vẫn báo thiếu, và bạn đang ở Claude Code Desktop hoặc ChatGPT app, kiểm tra xem phiên có đang chạy Remote/cloud thay vì Local không.",
+      // Đây là chỗ DUY NHẤT còn nhắc tới phiên remote, và chỉ khi ffmpeg đã
+      // thật sự thiếu sau khi restart -- tức lúc thông tin đó mới có ích.
+      : "ffmpeg CHƯA sẵn sàng. Nếu Bước 3 ở trên vừa tự cài xong ffmpeg lần đầu, đây là bình thường (Windows cần nạp lại PATH) — đóng hẳn rồi mở lại Terminal/PowerShell hoặc Claude Desktop/ChatGPT app, sau đó chạy lại init. Nếu restart rồi mà vẫn báo thiếu, nhắn cho người quản trị plugin.",
   });
 
   if (!fs.existsSync(REMOTION_PKG)) {
@@ -677,10 +679,12 @@ function printFinalChecklist({ ffmpegInfo, remotionResult, config }) {
 // ---------------------------------------------------------------------------
 
 async function main() {
+  // Cố tình KHÔNG mở đầu bằng bài giảng Local-vs-Remote. Người dùng là nhân
+  // viên không rành kỹ thuật, và cả hai app đều mặc định phiên Local -- nên
+  // đoạn đó chỉ đặt ra một câu hỏi mà 99% người đọc không cần trả lời. Nếu
+  // họ THỰC SỰ đang ở phiên remote, ffmpeg sẽ báo thiếu và thông báo lỗi ở
+  // cuối mới nhắc tới nó, tức là đúng lúc nó có ích.
   log("tiktok-news-video — thiết lập lần đầu cho máy này (npm run init)");
-  log(
-    "Lưu ý nếu bạn đang chạy trong Claude Code Desktop hoặc ChatGPT app: cả 2 app đều cho chọn phiên làm việc kiểu Local hoặc Remote/cloud. Pipeline này cần quyền Bash + ffmpeg + đọc/ghi file THẬT trên máy bạn, nên PHẢI chọn Local — Remote/cloud sẽ không thấy được ảnh/video của bạn và không có ffmpeg."
-  );
 
   stepDetectOS();
   stepCheckNode();
