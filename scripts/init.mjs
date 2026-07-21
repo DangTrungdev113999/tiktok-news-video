@@ -352,9 +352,19 @@ function getRemotionVersion(npxCmd) {
 
 // ---------------------------------------------------------------------------
 // Bước 6: Hỏi cấu hình (idempotent — hỏi lại nếu đã cấu hình trước đó)
+//
+// MẶC ĐỊNH init chỉ hỏi ĐÚNG MỘT câu: ElevenLabs API key. Thư mục workspace,
+// voice_id và nhịp đọc đều đã có giá trị mặc định do tác giả chọn sau khi đo
+// đạc (Hạnh / 4x / ~/Desktop/tiktok-news-video-workspace) -- hỏi lại chúng là
+// bắt một nhân viên không rành kỹ thuật quyết định ba việc mà họ không có
+// thông tin để quyết, và câu trả lời đúng luôn là "Enter".
+//
+// Ba giá trị đó vẫn đổi được, ở đúng chỗ mà việc đổi có nghĩa:
+//   - cho MỘT video:  synthesizeScript({ voiceId, paceLabel })
+//   - vĩnh viễn:      `npm run init -- --nang-cao` (hoặc --advanced)
 // ---------------------------------------------------------------------------
 
-async function stepConfigure(ask) {
+async function stepConfigure(ask, { advanced = false } = {}) {
   section("Bước 6: Cấu hình");
 
   let existingConfig = null;
@@ -370,33 +380,59 @@ async function stepConfigure(ask) {
     existingEnv = parseEnvFile(fs.readFileSync(ENV_PATH, "utf8"));
   }
 
-  const hasExisting = existingConfig || Object.keys(existingEnv).length > 0;
+  // Những gì đã có sẵn luôn thắng giá trị mặc định — init chạy lại nhiều lần
+  // (mỗi bản cập nhật plugin là một lần) và không lần nào được phép xoá cấu
+  // hình cũ của người dùng.
+  const savedVoiceId = existingConfig?.voiceId || existingEnv.ELEVENLABS_VOICE_ID || DEFAULT_VOICE_ID;
+  const savedPace = existingConfig?.narrationPace || DEFAULT_PACE_LABEL;
+  const savedKey = existingEnv.ELEVENLABS_API_KEY || "";
+  const savedWorkspace = existingConfig?.workspaceDir || null;
+  const bgmLibrary = Array.isArray(existingConfig?.bgmLibrary) ? existingConfig.bgmLibrary : [];
 
-  let doConfigure = true;
-  if (hasExisting) {
-    log("Đã tìm thấy cấu hình trước đó:");
-    if (existingConfig?.workspaceDir) log(`  - Thư mục workspace: ${existingConfig.workspaceDir}`);
-    if (existingConfig?.voiceId || existingEnv.ELEVENLABS_VOICE_ID) {
-      log(`  - Voice ID: ${existingConfig?.voiceId || existingEnv.ELEVENLABS_VOICE_ID}`);
+  // -------------------------------------------------------------------------
+  // Chế độ mặc định: một câu hỏi duy nhất, và chỉ khi thật sự còn thiếu key.
+  // -------------------------------------------------------------------------
+  if (!advanced) {
+    const workspaceDir = path.resolve(savedWorkspace || expandHome(DEFAULT_WORKSPACE_DIR));
+    ensureWorkspaceSubdirs(workspaceDir);
+
+    if (savedKey) {
+      log("Máy này đã cấu hình xong từ trước — không cần nhập lại gì cả.");
+      log(`  - Thư mục workspace: ${workspaceDir}`);
+      log(`  - Giọng đọc: ${savedVoiceId}`);
+      log(`  - Nhịp đọc: ${savedPace}`);
+      log("  - ElevenLabs API key: đã có");
+      log("\n(Muốn đổi thư mục / giọng / nhịp đọc: chạy lại init kèm --nang-cao)");
+      return { workspaceDir, voiceId: savedVoiceId, apiKey: savedKey, narrationPace: savedPace, bgmLibrary, wrote: false };
     }
-    log(`  - ElevenLabs API key: ${existingEnv.ELEVENLABS_API_KEY ? "đã có" : "chưa có"}`);
-    if (existingConfig?.narrationPace) log(`  - Nhịp đọc: ${existingConfig.narrationPace}`);
-    const answer = await ask("\nBạn có muốn cấu hình lại không? (y/N): ");
-    doConfigure = answer.trim().toLowerCase().startsWith("y");
+
+    log(`Thư mục làm việc: ${workspaceDir}`);
+    log("   (bỏ ảnh/video vào đây; video render xong cũng nằm ở đây)");
+    log(`Giọng đọc: Hạnh — nữ trẻ giọng Bắc, rõ chữ, hợp tin tức. Nhịp đọc: ${savedPace}.`);
+    log("");
+    log("Chỉ còn MỘT thứ cần bạn điền: API key ElevenLabs (để plugin tự lồng tiếng).");
+    log("Lấy key ở: https://elevenlabs.io/app/settings/api-keys");
+    log("Mỗi người dùng key riêng của mình, không dùng chung.");
+    const apiKey = await askApiKey(ask);
+
+    return { workspaceDir, voiceId: savedVoiceId, apiKey, narrationPace: savedPace, bgmLibrary, wrote: true };
   }
 
-  if (!doConfigure) {
-    const workspaceDir = existingConfig?.workspaceDir || null;
-    if (workspaceDir) ensureWorkspaceSubdirs(workspaceDir);
-    log("Giữ nguyên cấu hình hiện tại (không ghi đè).");
-    return {
-      workspaceDir,
-      voiceId: existingConfig?.voiceId || existingEnv.ELEVENLABS_VOICE_ID || DEFAULT_VOICE_ID,
-      apiKey: existingEnv.ELEVENLABS_API_KEY || "",
-      narrationPace: existingConfig?.narrationPace || DEFAULT_PACE_LABEL,
-      bgmLibrary: Array.isArray(existingConfig?.bgmLibrary) ? existingConfig.bgmLibrary : [],
-      wrote: false,
-    };
+  // -------------------------------------------------------------------------
+  // Chế độ --nang-cao: hỏi đủ bốn thứ.
+  // -------------------------------------------------------------------------
+  if (existingConfig || Object.keys(existingEnv).length > 0) {
+    log("Đã tìm thấy cấu hình trước đó:");
+    if (savedWorkspace) log(`  - Thư mục workspace: ${savedWorkspace}`);
+    log(`  - Voice ID: ${savedVoiceId}`);
+    log(`  - ElevenLabs API key: ${savedKey ? "đã có" : "chưa có"}`);
+    log(`  - Nhịp đọc: ${savedPace}`);
+    const answer = await ask("\nBạn có muốn cấu hình lại không? (y/N): ");
+    if (!answer.trim().toLowerCase().startsWith("y")) {
+      if (savedWorkspace) ensureWorkspaceSubdirs(savedWorkspace);
+      log("Giữ nguyên cấu hình hiện tại (không ghi đè).");
+      return { workspaceDir: savedWorkspace, voiceId: savedVoiceId, apiKey: savedKey, narrationPace: savedPace, bgmLibrary, wrote: false };
+    }
   }
 
   // --- Thư mục workspace (chứa assets/, bgm-library/, output/) ---
@@ -407,10 +443,11 @@ async function stepConfigure(ask) {
     "Đây LUÔN là một thư mục bình thường, cố định trên máy bạn — không đổi dù plugin có update bao nhiêu lần."
   );
   const workspaceAnswer = await ask(
-    `Bạn muốn dùng thư mục workspace nào?\n(Enter để dùng mặc định: ${DEFAULT_WORKSPACE_DIR})\n> `
+    `Bạn muốn dùng thư mục workspace nào?\n(Enter để dùng mặc định: ${savedWorkspace || DEFAULT_WORKSPACE_DIR})\n> `
   );
-  let workspaceDir = expandHome(workspaceAnswer.trim() || DEFAULT_WORKSPACE_DIR);
-  workspaceDir = path.resolve(workspaceDir);
+  const workspaceDir = path.resolve(
+    expandHome(workspaceAnswer.trim() || savedWorkspace || DEFAULT_WORKSPACE_DIR)
+  );
 
   ensureWorkspaceSubdirs(workspaceDir);
   log(`✅ Thư mục workspace sẵn sàng: ${workspaceDir}`);
@@ -425,7 +462,7 @@ async function stepConfigure(ask) {
   log("");
   log("Lấy API key ở: https://elevenlabs.io/app/settings/api-keys");
   log("Nếu bạn luôn tự cung cấp file MP3 lời đọc riêng, có thể bỏ qua key (nhấn Enter).");
-  const apiKey = await askApiKey(ask);
+  const apiKey = await askApiKey(ask, savedKey);
 
   // --- Voice ID ---
   log("\nvoice_id là mã giọng đọc, lấy trong Voice Library của ElevenLabs.");
@@ -433,19 +470,12 @@ async function stepConfigure(ask) {
   log("bấm vào giọng nào bạn thích rồi copy ID của nó.");
   log(`\nMặc định là ${DEFAULT_VOICE_ID} — "Hạnh", nữ trẻ giọng Bắc, rõ chữ, hợp tin tức.`);
   log("(Chọn sau khi thu thử 14 giọng Việt trên cùng một kịch bản.)");
-  const voiceId = await askVoiceId(ask, apiKey);
+  const voiceId = await askVoiceId(ask, apiKey, savedVoiceId);
 
   // --- Mức kéo nhanh lời đọc ---
   const narrationPace = await askNarrationPace(ask, existingConfig?.narrationPace);
 
-  return {
-    workspaceDir,
-    voiceId,
-    apiKey,
-    narrationPace,
-    bgmLibrary: Array.isArray(existingConfig?.bgmLibrary) ? existingConfig.bgmLibrary : [],
-    wrote: true,
-  };
+  return { workspaceDir, voiceId, apiKey, narrationPace, bgmLibrary, wrote: true };
 }
 
 /**
@@ -472,10 +502,20 @@ async function callElevenLabs(url, apiKey) {
  * lộ ra ở Bước 2 của lần làm video đầu tiên -- giữa chừng, sau khi đã dựng
  * xong kịch bản và kiểm asset. Một lần gọi GET /v1/user bắt được ngay tại đây.
  */
-async function askApiKey(ask) {
+async function askApiKey(ask, savedKey = "") {
   for (;;) {
-    const answer = (await ask("\nNhập ElevenLabs API key (Enter để bỏ qua): ")).trim();
+    const prompt = savedKey
+      ? "\nNhập ElevenLabs API key (Enter để giữ key đang lưu): "
+      : "\nNhập ElevenLabs API key (Enter để bỏ qua): ";
+    const answer = (await ask(prompt)).trim();
     if (!answer) {
+      // Enter KHÔNG được xoá key đang có. Người dùng vào chế độ nâng cao
+      // thường là để đổi giọng hoặc nhịp đọc, và một cú Enter ở câu hỏi này
+      // từng đủ để mất key -- lỗi chỉ lộ ra ở bước lồng tiếng của video sau.
+      if (savedKey) {
+        log("↩️  Giữ nguyên API key đang lưu.");
+        return savedKey;
+      }
       log("⏭️  Bỏ qua API key — bạn sẽ phải tự cung cấp file MP3 lời đọc cho mỗi video.");
       return "";
     }
@@ -508,9 +548,13 @@ async function askApiKey(ask) {
  * tiếng Indonesia. `verified_languages` trong API trả lời được câu này, nên
  * không có lý do gì để đoán.
  */
-async function askVoiceId(ask, apiKey) {
+async function askVoiceId(ask, apiKey, savedVoiceId = DEFAULT_VOICE_ID) {
   for (;;) {
-    const answer = (await ask("\nNhập voice_id (Enter để dùng Hạnh): ")).trim() || DEFAULT_VOICE_ID;
+    // Enter giữ giọng đang lưu, không quay về mặc định — cùng lý do với key.
+    const isDefault = savedVoiceId === DEFAULT_VOICE_ID;
+    const answer =
+      (await ask(`\nNhập voice_id (Enter để ${isDefault ? "dùng Hạnh" : `giữ ${savedVoiceId}`}): `)).trim() ||
+      savedVoiceId;
 
     if (!apiKey) {
       log(`⏭️  Chưa có API key nên chưa kiểm chứng được giọng. Lưu ${answer}.`);
@@ -684,7 +728,10 @@ async function main() {
   // đoạn đó chỉ đặt ra một câu hỏi mà 99% người đọc không cần trả lời. Nếu
   // họ THỰC SỰ đang ở phiên remote, ffmpeg sẽ báo thiếu và thông báo lỗi ở
   // cuối mới nhắc tới nó, tức là đúng lúc nó có ích.
+  const advanced = process.argv.slice(2).some((a) => a === "--nang-cao" || a === "--advanced");
+
   log("tiktok-news-video — thiết lập lần đầu cho máy này (npm run init)");
+  if (advanced) log("(chế độ nâng cao: hỏi cả thư mục, giọng đọc và nhịp đọc)");
 
   stepDetectOS();
   stepCheckNode();
@@ -695,7 +742,7 @@ async function main() {
   const ask = createAsk(rl);
   let config;
   try {
-    config = await stepConfigure(ask);
+    config = await stepConfigure(ask, { advanced });
   } finally {
     rl.close();
   }

@@ -5,9 +5,19 @@ Desktop) và **Codex CLI / ChatGPT desktop app** (2 app này dùng chung 1 đị
 dạng plugin). Chọn đúng phần bên dưới theo app bạn đang dùng, không cần
 clone/git tay gì cả.
 
-Sau khi cài xong ở app nào, luôn chạy bước **Init** trước — bước này tự kiểm
-tra/cài ffmpeg + Remotion, rồi hỏi bạn API key ElevenLabs **của riêng bạn**
-(không dùng chung key với ai khác) + thư mục lưu video output.
+Sau khi cài xong ở app nào, luôn chạy bước **Init** trước. Init tự làm hết
+phần kỹ thuật (ffmpeg, Remotion, thư mục làm việc) và **chỉ hỏi bạn đúng một
+thứ: API key ElevenLabs của riêng bạn** (không dùng chung key với ai khác).
+Lấy key ở https://elevenlabs.io/app/settings/api-keys — đăng ký tài khoản,
+vào mục API Keys, bấm tạo key mới rồi copy.
+
+Các lần sau (ví dụ sau khi cập nhật plugin) init không hỏi gì cả, cứ chạy là
+xong.
+
+> **Máy chưa có Node.js thì init không chạy được.** Đây là thứ duy nhất bạn
+> phải cài tay trước, một lần duy nhất: vào https://nodejs.org, tải bản
+> **LTS**, cài bằng cách bấm Next đến hết, rồi **đóng hẳn app và mở lại**.
+> Nếu không chắc máy đã có chưa thì cứ cài — cài đè lên không sao cả.
 
 ---
 
