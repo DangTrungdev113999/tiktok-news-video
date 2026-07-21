@@ -188,10 +188,20 @@ jobs:
         shell: pwsh
         run: |
           $node = 'C:\Program Files\nodejs\node.exe'
-          # Closed stdin: both questions (folder, key) read empty and take
-          # their defaults. A hang here means init grew a question that has no
-          # default, which would strand an employee mid-setup.
+
+          # First: with stdin closed and NO --workspace, init must REFUSE.
+          # This is the whole point of the flag. A tool-invoked Bash call has
+          # no keyboard, so the drag-and-drop question reaches nobody -- and
+          # silently defaulting there means the folder the admin handed the
+          # employee is discarded while init prints a checkmark.
           $null | & $node scripts/init.mjs
+          if ($LASTEXITCODE -eq 0) { Write-Host "FAIL: init defaulted the workspace instead of refusing"; exit 1 }
+          Write-Host "OK - init refuses to guess the workspace"
+
+          # Now the real path: the agent passes what the employee dragged in.
+          $ws = Join-Path $env:RUNNER_TEMP 'ws mau'   # space: the template folder is named by a human
+          New-Item -ItemType Directory -Force -Path $ws | Out-Null
+          $null | & $node scripts/init.mjs --workspace "$ws"
           if ($LASTEXITCODE -ne 0) { Write-Host "init exited $LASTEXITCODE"; exit 1 }
 
           $cfg = "$env:USERPROFILE\.tiktok-news-video\config.local.json"
@@ -227,13 +237,15 @@ jobs:
       - name: init installs everything, unattended
         shell: pwsh
         run: |
-          # Closed stdin => the single question (the API key) reads empty and
-          # is skipped. If init ever asks more than that, this step hangs, and
-          # a hang here is the correct failure: it means the one-question
-          # promise broke.
+          # The workspace arrives by flag (that is how the agent hands over
+          # what the employee dragged into chat). The API key is left out on
+          # purpose: it is optional, so closed stdin must SKIP it, not hang.
+          # A hang here means init grew a question with no answer available.
           #
           # Piped, not `< NUL`: PowerShell reserves `<` and errors on it.
-          $null | node scripts/init.mjs
+          $ws = Join-Path $env:RUNNER_TEMP 'workspace'
+          New-Item -ItemType Directory -Force -Path $ws | Out-Null
+          $null | node scripts/init.mjs --workspace "$ws"
           if ($LASTEXITCODE -ne 0) { Write-Host "init exited $LASTEXITCODE"; exit 1 }
 
       - name: ffmpeg + ffprobe resolve WITHOUT a restart

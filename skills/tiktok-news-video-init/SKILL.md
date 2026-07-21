@@ -1,25 +1,56 @@
 ---
 name: tiktok-news-video-init
 user-invocable: true
-description: "One-time machine setup for the tiktok-news-video plugin: verifies/installs Node+ffmpeg+Remotion deps per OS, then prompts for output folder, ElevenLabs API key, voice_id, and narration pace. Run this before the first /tiktok-news-video on a new machine."
+description: "One-time machine setup for the tiktok-news-video plugin: verifies/installs Node+ffmpeg+Remotion deps per OS, then saves the workspace folder and ElevenLabs API key you collect in chat and pass via --workspace / --api-key. Run this before the first /tiktok-news-video on a new machine."
 argument-hint: ""
 ---
 
 # Init — one-time environment setup
 
-Run `npm run init` (equivalently `node scripts/init.mjs`) from the plugin
-repo root. The script itself does the real work: OS detection, dependency
-checks/installs for ffmpeg + Remotion's headless Chrome, a pass/fail
-verification checklist, then prompts for the output folder, ElevenLabs API key,
-voice_id, and narration pace, and writes `config.local.json` + `.env`.
+Run `node scripts/init.mjs` from the plugin repo root. The script does the real
+work: OS detection, dependency checks/installs for ffmpeg + Remotion's headless
+Chrome, a pass/fail verification checklist, and writing `config.local.json` +
+`.env` into `~/.tiktok-news-video/`.
 
-## It asks for exactly ONE thing: the ElevenLabs API key
+## YOU collect the two answers; init reads them from flags
+
+The employee types into the **chat box**, not into init's stdin. When you run
+init through Bash there is no keyboard attached to it, so any question it asks
+reaches nobody. Both answers therefore travel as command-line flags:
+
+```
+node scripts/init.mjs --workspace "<đường dẫn>" --api-key "<key>"
+```
+
+So the sequence is:
+
+1. Ask the employee to **drag the folder the admin gave them into the chat**.
+   The path appears as text. Pass it to `--workspace`, quoted (it will contain
+   spaces, and Windows' "Copy as path" wraps it in double quotes — init strips
+   those itself).
+2. Ask for the **ElevenLabs API key** and pass it to `--api-key`. Init verifies
+   it against `GET /v1/user` and **stops on 401** rather than saving a dead key.
+3. Both land in `~/.tiktok-news-video/` (`config.local.json` + `.env`). You do
+   not remember anything — that directory is the memory, and it survives every
+   plugin update.
+
+**Without `--workspace`, init refuses to run** instead of quietly falling back
+to a default folder. That refusal is deliberate: a silent default discards the
+template folder the admin handed out, prints a checkmark anyway, and — because
+re-runs never ask again — nobody ever finds out.
+
+On an already-configured machine the saved workspace is reused, so a re-run
+needs no flags at all.
+
+`--api-key` is optional: skip it if the employee will always supply their own
+MP3 narration. The final checklist marks it ❌ and the next run asks again.
+
+## Everything else is already decided
 
 Everything else has a default the author picked by measuring, so asking would
 only make a non-technical user guess at a decision whose right answer is always
-"Enter": the workspace folder (`~/Desktop/tiktok-news-video-workspace`), the
-voice (`pGapy9MNHCukzJtjavF0` — Hạnh, chosen after auditioning 14 Vietnamese
-voices on one script), and the pace (`4x` = atempo 1.40).
+the default: the voice (`pGapy9MNHCukzJtjavF0` — Hạnh, chosen after auditioning
+14 Vietnamese voices on one script) and the pace (`4x` = atempo 1.40).
 
 Re-running init on an already-configured machine asks **nothing at all** — it
 prints what's saved and exits. That is the common case, because every plugin

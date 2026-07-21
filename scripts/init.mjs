@@ -139,11 +139,41 @@ export function expandHome(p) {
  */
 function createAsk(rl) {
   const lineIterator = rl[Symbol.asyncIterator]();
-  return async function ask(question) {
+  const ask = async function ask(question) {
     process.stdout.write(question);
     const { value, done } = await lineIterator.next();
-    return done ? "" : value;
+    // `done` nghĩa là stdin ĐÃ ĐÓNG — không phải người dùng nhấn Enter. Hai
+    // chuyện này trước đây cùng trả về "", nên khi init được một agent gọi qua
+    // tool Bash (stdin không phải bàn phím), mọi câu hỏi tự trả lời bằng giá
+    // trị mặc định và init in ra dấu ✅. Đánh dấu lại để chỗ nào không được
+    // phép đoán thì dừng hẳn.
+    if (done) {
+      ask.exhausted = true;
+      return "";
+    }
+    return value;
   };
+  ask.exhausted = false;
+  return ask;
+}
+
+/** Lỗi do thiếu dữ liệu đầu vào — in gọn, không kèm stack. */
+class InitInputError extends Error {}
+
+/**
+ * Đọc `--ten-co <giá trị>` từ argv. Trả về null nếu không có.
+ *
+ * Đây là đường mà đường dẫn thư mục và API key đi từ khung chat vào init:
+ * nhân viên kéo thư mục / dán key cho agent, agent truyền xuống bằng cờ.
+ * Trước đây không có đường nào cả — init chỉ đọc được stdin, mà stdin thì
+ * không phải chỗ câu trả lời đi tới.
+ */
+function flagValue(name) {
+  const argv = process.argv.slice(2);
+  const i = argv.indexOf(`--${name}`);
+  if (i !== -1 && argv[i + 1] && !argv[i + 1].startsWith("--")) return argv[i + 1];
+  const inline = argv.find((a) => a.startsWith(`--${name}=`));
+  return inline ? inline.slice(name.length + 3) : null;
 }
 
 // ---------------------------------------------------------------------------
@@ -726,11 +756,32 @@ async function stepConfigure(ask, { advanced = false } = {}) {
  * path", nên chuỗi dán vào dùng được nguyên trạng.
  */
 async function askWorkspaceDir(ask, savedWorkspace) {
+  const fromFlag = flagValue("workspace");
+  if (fromFlag) {
+    const dir = path.resolve(expandHome(fromFlag));
+    log(`✅ Thư mục làm việc: ${dir}`);
+    return dir;
+  }
+
   const fallback = savedWorkspace || DEFAULT_WORKSPACE_DIR;
   log("");
   log("Thư mục làm việc: nơi chứa ảnh/video và nơi video render xong được lưu.");
   log("👉 KÉO thư mục đó từ File Explorer/Finder rồi THẢ vào ô chat này — đường dẫn sẽ tự hiện ra.");
   const answer = await ask(`(hoặc Enter để dùng: ${fallback})\n> `);
+
+  // Không có cờ, và cũng không có ai để hỏi: dừng. Tự lấy mặc định ở đây là
+  // kiểu hỏng đắt nhất -- init in ✅, thư mục mẫu người quản trị phát cho nhân
+  // viên bị bỏ qua, và vì lần chạy sau init không hỏi lại nên không ai biết.
+  if (ask.exhausted && !answer.trim()) {
+    throw new InitInputError(
+      "Không nhận được thư mục làm việc.\n\n" +
+        "Init đang chạy ở chế độ không có bàn phím (stdin đã đóng), nên câu hỏi\n" +
+        "phía trên không ai trả lời được.\n\n" +
+        "Cách làm đúng: hỏi nhân viên KÉO thư mục vào khung chat, rồi chạy lại kèm cờ:\n" +
+        '  node scripts/init.mjs --workspace "<đường dẫn vừa nhận>"',
+    );
+  }
+
   const dir = path.resolve(expandHome(answer.trim() || fallback));
   log(`✅ Thư mục làm việc: ${dir}`);
   return dir;
@@ -754,6 +805,32 @@ async function callElevenLabs(url, apiKey) {
 }
 
 /**
+ * Kiểm chứng key đến từ cờ `--api-key`.
+ *
+ * Khác nhánh hỏi tay ở đúng một chỗ: không có vòng "nhập lại" nào cả, vì
+ * không có ai đang ngồi ở bàn phím. Key sai thì dừng để agent đi hỏi lại
+ * nhân viên -- lưu một key 401 vào .env chỉ dời lỗi sang bước lồng tiếng.
+ */
+async function verifyApiKey(key) {
+  const res = await callElevenLabs("https://api.elevenlabs.io/v1/user", key);
+  if (res.ok) {
+    const sub = res.json?.subscription ?? {};
+    const left = (sub.character_limit ?? 0) - (sub.character_count ?? 0);
+    log(`✅ Key hợp lệ${sub.tier ? ` (gói ${sub.tier})` : ""}${sub.character_limit ? `, còn ${left.toLocaleString("vi-VN")} ký tự` : ""}.`);
+    return key;
+  }
+  if (res.status === 401) {
+    throw new InitInputError(
+      "ElevenLabs từ chối API key này (401).\n\n" +
+        "Nhờ nhân viên lấy lại key ở https://elevenlabs.io/app/settings/api-keys\n" +
+        "rồi chạy lại init với key mới.",
+    );
+  }
+  log(`⚠️  Chưa kiểm chứng được key (${res.networkError ?? `HTTP ${res.status}`}). Vẫn lưu lại, nhưng nếu sai thì bước tạo giọng sẽ báo lỗi.`);
+  return key;
+}
+
+/**
  * Hỏi API key VÀ kiểm chứng nó ngay.
  *
  * Trước đây init nhận bất cứ chuỗi nào người dùng gõ. Key sai một ký tự chỉ
@@ -761,6 +838,11 @@ async function callElevenLabs(url, apiKey) {
  * xong kịch bản và kiểm asset. Một lần gọi GET /v1/user bắt được ngay tại đây.
  */
 async function askApiKey(ask, savedKey = "") {
+  // Cùng đường đi với --workspace: nhân viên dán key vào khung chat, agent
+  // truyền xuống. Key vẫn được kiểm chứng bằng GET /v1/user y như gõ tay.
+  const fromFlag = flagValue("api-key");
+  if (fromFlag) return await verifyApiKey(fromFlag);
+
   for (;;) {
     const prompt = savedKey
       ? "\nNhập ElevenLabs API key (Enter để giữ key đang lưu): "
@@ -773,6 +855,13 @@ async function askApiKey(ask, savedKey = "") {
       if (savedKey) {
         log("↩️  Giữ nguyên API key đang lưu.");
         return savedKey;
+      }
+      if (ask.exhausted) {
+        // Không nghiêm trọng bằng thiếu thư mục: key rỗng không bị ghi đè lên
+        // cái gì, checklist cuối init báo ❌, và lần chạy sau vẫn hỏi lại.
+        log("⏭️  Chưa có API key (init chạy không có bàn phím, không ai trả lời được).");
+        log('   Lấy key từ nhân viên rồi chạy lại kèm: --api-key "<key>"');
+        return "";
       }
       log("⏭️  Bỏ qua API key — bạn sẽ phải tự cung cấp file MP3 lời đọc cho mỗi video.");
       return "";
@@ -1051,6 +1140,12 @@ function isMain() {
 
 if (isMain()) {
   main().catch((err) => {
+    // Thiếu đầu vào là chuyện bình thường, có cách sửa rõ ràng — in nguyên
+    // thông báo, không kèm stack trace (thứ chỉ làm nhân viên hoảng).
+    if (err instanceof InitInputError) {
+      console.error(`\n❌ ${err.message}`);
+      process.exit(1);
+    }
     console.error("\n❌ Có lỗi không mong muốn xảy ra khi chạy init:");
     console.error(err?.stack || err);
     process.exit(1);
