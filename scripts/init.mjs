@@ -36,7 +36,7 @@ import path from "node:path";
 import os from "node:os";
 import readline from "node:readline";
 import { spawnSync } from "node:child_process";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import { CONFIG_DIR, CONFIG_PATH, ENV_PATH, DEFAULT_WORKSPACE_DIR, ensureWorkspaceSubdirs } from "./workspace.mjs";
 import { PACE_LEVELS, DEFAULT_PACE_LABEL, describe, paceLevel } from "./narration-pace.mjs";
 
@@ -104,7 +104,7 @@ function parseEnvFile(content) {
   return out;
 }
 
-function expandHome(p) {
+export function expandHome(p) {
   // Strip a wrapping quote pair FIRST. Windows 11's "Copy as path" (the
   // default in Explorer's context menu) puts the path on the clipboard
   // already wrapped in double quotes: "C:\Users\nv\Desktop\ws". `"` is an
@@ -703,8 +703,24 @@ async function main() {
   printFinalChecklist({ ffmpegInfo, remotionResult, config });
 }
 
-main().catch((err) => {
-  console.error("\n❌ Có lỗi không mong muốn xảy ra khi chạy init:");
-  console.error(err?.stack || err);
-  process.exit(1);
-});
+// Only run the installer when invoked as a script. Without this guard, a test
+// (or anything else) that imports `expandHome` would kick off npm install and
+// sit waiting for stdin.
+//
+// The try/catch is load-bearing: under `node -e` / `node --eval` there is no
+// argv[1] at all, and pathToFileURL(undefined) throws.
+function isMain() {
+  try {
+    return import.meta.url === pathToFileURL(process.argv[1]).href;
+  } catch {
+    return false;
+  }
+}
+
+if (isMain()) {
+  main().catch((err) => {
+    console.error("\n❌ Có lỗi không mong muốn xảy ra khi chạy init:");
+    console.error(err?.stack || err);
+    process.exit(1);
+  });
+}

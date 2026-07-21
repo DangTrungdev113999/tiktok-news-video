@@ -85,15 +85,12 @@ jobs:
         run: |
           # Explorer copies paths wrapped in double quotes; `"` is illegal in a
           # filename, so an unstripped quote used to kill init at question one.
-          $ws = Join-Path $env:RUNNER_TEMP "ws-quoted"
-          $script = @"
-          import { strict as assert } from 'node:assert';
-          const src = await import('node:fs').then(m => m.promises.readFile('scripts/init.mjs','utf8'));
-          assert.match(src, /replace\(\/\^"\(\.\*\)"\\\$\/s/, 'init.mjs must strip a wrapping quote pair in expandHome');
-          console.log('OK - expandHome strips quotes');
-          "@
-          Set-Content -Path (Join-Path $env:RUNNER_TEMP "q.mjs") -Value $script
-          node (Join-Path $env:RUNNER_TEMP "q.mjs")
+          #
+          # This asserts BEHAVIOUR -- it calls expandHome and creates a real
+          # directory. The first version of this step regex-matched init.mjs's
+          # source text instead and false-failed on its first run: the assertion
+          # was about how the fix was spelled, not about what it does.
+          node .github/scripts/check-expand-home.mjs
 
   # The real thing: install Remotion, install ffmpeg, render a video on Windows.
   render:

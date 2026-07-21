@@ -129,7 +129,17 @@ export async function cleanSource(folder, { dryRun = false } = {}) {
 // `target N` naming contract collapsed further downstream.
 //
 // `pathToFileURL` is what the other six CLI scripts in this repo already use.
-if (import.meta.url === pathToFileURL(process.argv[1]).href) {
+// The try/catch matches them too: under `node -e` there is no argv[1] and
+// pathToFileURL(undefined) throws.
+function isMain() {
+  try {
+    return import.meta.url === pathToFileURL(process.argv[1]).href;
+  } catch {
+    return false;
+  }
+}
+
+if (isMain()) {
   const args = process.argv.slice(2);
   const dryRun = args.includes('--dry-run');
   const folder = args.find((a) => !a.startsWith('--'));
