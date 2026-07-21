@@ -130,6 +130,83 @@ jobs:
           # was about how the fix was spelled, not about what it does.
           node .github/scripts/check-expand-home.mjs
 
+  # The employee's actual starting state: a Windows machine with NO Node.js.
+  #
+  # Deliberately no actions/setup-node here -- that action is what made every
+  # other job unable to answer this question. The runner image ships Node at
+  # C:\Program Files\nodejs, so the first step hides it and strips PATH, then
+  # the agent's documented recovery (winget install -> call node by absolute
+  # path) has to bring the machine back from nothing.
+  #
+  # actions/checkout keeps working through all of this: the runner executes
+  # actions with its own bundled Node, not the one on PATH.
+  node-bootstrap:
+    runs-on: windows-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Remove Node.js from this machine
+        shell: pwsh
+        run: |
+          if (Test-Path 'C:\Program Files\nodejs') {
+            Rename-Item 'C:\Program Files\nodejs' 'nodejs-hidden-for-test'
+          }
+          $env:PATH = ($env:PATH -split ';' | Where-Object {
+            $_ -and -not (Test-Path (Join-Path $_ 'node.exe')) -and -not (Test-Path (Join-Path $_ 'npm.cmd'))
+          }) -join ';'
+          # Persist the stripped PATH to the following steps.
+          "PATH=$env:PATH" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          foreach ($c in @('node', 'npm')) {
+            if (Get-Command $c -ErrorAction SilentlyContinue) {
+              Write-Host "FAIL: $c survived; this job cannot simulate a bare machine"; exit 1
+            }
+          }
+          Write-Host "OK - no node, no npm. This is the employee's laptop."
+
+      - name: The agent's recovery -- winget, then an absolute node path
+        shell: pwsh
+        run: |
+          # Exactly what skills/tiktok-news-video-init/SKILL.md tells the agent
+          # to run. If this step and that file ever disagree, the file is wrong.
+          winget install -e --id OpenJS.NodeJS.LTS --accept-package-agreements --accept-source-agreements --disable-interactivity
+          $node = 'C:\Program Files\nodejs\node.exe'
+          if (-not (Test-Path $node)) { Write-Host "FAIL: winget did not put node at $node"; exit 1 }
+
+          # The load-bearing claim: `node` alone is STILL broken right after a
+          # successful install, because Windows read PATH when this process
+          # started. If this ever stops being true, the skill's warning (and
+          # half the ffmpeg work) is obsolete and should be revisited.
+          if (Get-Command node -ErrorAction SilentlyContinue) {
+            Write-Host "NOTE: bare 'node' became visible mid-session -- revisit the PATH guidance"
+          } else {
+            Write-Host "OK - bare 'node' is still not found; the absolute path is required"
+          }
+          Write-Host "node version: $(& $node -v)"
+
+      - name: init runs the whole setup from there, unattended
+        shell: pwsh
+        run: |
+          $node = 'C:\Program Files\nodejs\node.exe'
+          # Closed stdin: both questions (folder, key) read empty and take
+          # their defaults. A hang here means init grew a question that has no
+          # default, which would strand an employee mid-setup.
+          $null | & $node scripts/init.mjs
+          if ($LASTEXITCODE -ne 0) { Write-Host "init exited $LASTEXITCODE"; exit 1 }
+
+          $cfg = "$env:USERPROFILE\.tiktok-news-video\config.local.json"
+          if (-not (Test-Path $cfg)) { Write-Host "FAIL: init wrote no config"; exit 1 }
+          $j = Get-Content $cfg -Raw | ConvertFrom-Json
+          if (-not $j.workspaceDir) { Write-Host "FAIL: no workspaceDir in config"; exit 1 }
+          if (-not (Test-Path (Join-Path $j.workspaceDir 'assets'))) { Write-Host "FAIL: assets/ was not created"; exit 1 }
+          Write-Host "OK - workspace ready at $($j.workspaceDir)"
+
+          # ffmpeg had to come from init too, on a machine that never had it.
+          $s = & $node -e "import('./scripts/ffmpeg-path.mjs').then(m => console.log(JSON.stringify(m.status())))"
+          Write-Host "ffmpeg: $s"
+          if ($s -notmatch '"ok":true') { Write-Host "FAIL: ffmpeg not usable after init"; exit 1 }
+          Write-Host "OK - bare machine -> working setup, no human step"
+
   # The real thing: install Remotion, install ffmpeg, render a video on Windows.
   render:
     runs-on: windows-latest
