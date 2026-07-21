@@ -102,14 +102,33 @@ jobs:
         with:
           node-version: "20"
 
-      - name: Install ffmpeg
-        run: choco install ffmpeg -y --no-progress
-
-      - name: Install the render engine
-        working-directory: remotion
+      # Deliberately NO `choco install ffmpeg` here. The runner has no ffmpeg,
+      # which is exactly the state an employee's laptop is in -- so init has to
+      # produce one itself, and the rest of the job proves what it produced is
+      # usable IN THE SAME PROCESS, with no PATH reload and no second run.
+      #
+      # This also replaces the old `npm ci` step: letting init drive the whole
+      # install is the path the employee actually takes.
+      - name: init installs everything, unattended
+        shell: pwsh
         run: |
-          npm ci
-          npx remotion browser ensure
+          # Closed stdin => the single question (the API key) reads empty and
+          # is skipped. If init ever asks more than that, this step hangs, and
+          # a hang here is the correct failure: it means the one-question
+          # promise broke.
+          #
+          # Piped, not `< NUL`: PowerShell reserves `<` and errors on it.
+          $null | node scripts/init.mjs
+          if ($LASTEXITCODE -ne 0) { Write-Host "init exited $LASTEXITCODE"; exit 1 }
+
+      - name: ffmpeg + ffprobe resolve WITHOUT a restart
+        shell: pwsh
+        run: |
+          # The whole reason ffmpeg-path.mjs exists: winget/manual installs put
+          # ffmpeg on PATH, and PATH is only read at process start -- so the
+          # session that just installed it still can't see it. A vendored copy
+          # under CONFIG_DIR has no such problem, and this asserts it.
+          node -e "import('./scripts/ffmpeg-path.mjs').then(m => { const s = m.status(); console.log(JSON.stringify(s)); if (!s.ok) { console.error('ffmpeg/ffprobe not resolvable right after init'); process.exit(1) } })"
 
       - name: Full pipeline smoke test (probe -> TTS mock -> build-spec -> render)
         run: node scripts/smoke-test.mjs

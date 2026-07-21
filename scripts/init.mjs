@@ -38,6 +38,7 @@ import readline from "node:readline";
 import { spawnSync } from "node:child_process";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { CONFIG_DIR, CONFIG_PATH, ENV_PATH, DEFAULT_WORKSPACE_DIR, ensureWorkspaceSubdirs } from "./workspace.mjs";
+import { binaryPath } from "./ffmpeg-path.mjs";
 import { PACE_LEVELS, DEFAULT_PACE_LABEL, describe, paceLevel } from "./narration-pace.mjs";
 
 const __filename = fileURLToPath(import.meta.url);
@@ -85,9 +86,17 @@ function tryRun(cmd, args, opts = {}) {
   }
 }
 
+/**
+ * ffmpeg VÀ ffprobe đều chạy được chứ? Phải hỏi cả hai: chúng đi cùng nhau
+ * trong mọi bản cài, nhưng plugin gọi ffprobe (đo asset, đo độ dài audio)
+ * nhiều hơn gọi ffmpeg — kiểm mỗi ffmpeg thì bỏ lọt đúng cái hay dùng.
+ */
 function checkFfmpeg() {
-  const r = tryRun("ffmpeg", ["-version"]);
+  const ffmpegBin = binaryPath("ffmpeg");
+  const r = tryRun(ffmpegBin, ["-version"]);
   if (r.error || r.status !== 0) return null;
+  const probe = tryRun(binaryPath("ffprobe"), ["-version"]);
+  if (probe.error || probe.status !== 0) return null;
   const firstLine = (r.stdout || "").split("\n")[0].trim();
   return firstLine || "ffmpeg (không rõ phiên bản)";
 }
@@ -176,15 +185,34 @@ function stepCheckNode() {
 // Bước 3: Kiểm tra / cài ffmpeg
 // ---------------------------------------------------------------------------
 
-function stepFfmpeg() {
+async function stepFfmpeg() {
   section("Bước 3: Kiểm tra ffmpeg");
   let info = checkFfmpeg();
   if (info) {
     log(`✅ Đã có ffmpeg: ${info}`);
-    return info;
+    return { info, ffmpegDir: null };
   }
 
   log("Chưa tìm thấy ffmpeg trên máy này. Đang thử tự cài đặt...");
+
+  // Windows đi đường tải-thẳng TRƯỚC winget. Cả hai đều tải chừng ấy dữ liệu,
+  // nhưng winget cài vào PATH — mà PATH chỉ nạp lúc tiến trình khởi động, nên
+  // nó luôn kết thúc bằng "đóng app, mở lại, chạy init lần nữa". Bản tải
+  // thẳng dùng được ngay trong chính phiên này.
+  if (IS_WIN) {
+    const dir = await downloadFfmpegWindows();
+    if (dir) {
+      // Ghi vào config NGAY, trước Bước 6: checkFfmpeg() bên dưới phân giải
+      // đường dẫn qua config, và bước 4 (Remotion) cũng có thể cần tới.
+      saveFfmpegDir(dir);
+      info = checkFfmpeg();
+      if (info) {
+        log(`✅ Kiểm tra lại: ffmpeg đã dùng được (${info})`);
+        return { info, ffmpegDir: dir };
+      }
+      log("⚠️  Tải xong nhưng chạy thử vẫn lỗi — thử tiếp bằng winget.");
+    }
+  }
 
   if (IS_MAC) {
     const brewCheck = tryRun("brew", ["--version"]);
@@ -244,7 +272,128 @@ function stepFfmpeg() {
   info = checkFfmpeg();
   if (info) log(`✅ Kiểm tra lại: đã có ffmpeg (${info})`);
   else log("❌ ffmpeg vẫn CHƯA sẵn sàng sau bước cài tự động.");
-  return info;
+  return { info, ffmpegDir: null };
+}
+
+/**
+ * Ghi ffmpegDir vào config ngay lúc tải xong, không đợi Bước 6.
+ *
+ * Bước 6 mới là chỗ ghi config đầy đủ, nhưng nó chạy SAU — mà từ giây phút
+ * tải xong trở đi, mọi lệnh gọi ffmpeg đều phải tìm thấy đường dẫn này. Nên
+ * hợp nhất vào file config hiện có (nếu đã có) thay vì ghi đè.
+ */
+function saveFfmpegDir(dir) {
+  let cfg = {};
+  try {
+    cfg = JSON.parse(fs.readFileSync(CONFIG_PATH, "utf8"));
+  } catch {
+    cfg = {};
+  }
+  cfg.ffmpegDir = dir;
+  fs.mkdirSync(CONFIG_DIR, { recursive: true });
+  fs.writeFileSync(CONFIG_PATH, JSON.stringify(cfg, null, 2) + "\n", "utf8");
+}
+
+/**
+ * Tải bản ffmpeg tĩnh về thư mục của plugin — KHÔNG đụng tới PATH.
+ *
+ * Đây là đường thoát cho hai tình huống mà winget không giải quyết được, và
+ * cả hai đều rất hay gặp trên máy công ty:
+ *   - máy không có winget (Windows 10 bản cũ, hoặc bị policy chặn)
+ *   - winget cài xong nhưng PATH chưa nạp lại, nên phải restart app rồi chạy
+ *     init lần hai — bước mà người dùng không rành kỹ thuật hay bỏ dở
+ *
+ * Tải thẳng vào CONFIG_DIR/bin thì không cần quyền Administrator, không cần
+ * restart, và đường dẫn được ghi vào config để mọi script dùng lại (xem
+ * scripts/ffmpeg-path.mjs).
+ *
+ * @returns {Promise<string|null>} thư mục chứa ffmpeg.exe, hoặc null nếu hỏng
+ */
+async function downloadFfmpegWindows() {
+  const URL = "https://www.gyan.dev/ffmpeg/builds/ffmpeg-release-essentials.zip";
+  const binDir = path.join(CONFIG_DIR, "bin");
+  const workDir = path.join(CONFIG_DIR, "ffmpeg-download");
+  const zipPath = path.join(workDir, "ffmpeg.zip");
+
+  try {
+    log("Đang tải sẵn ffmpeg về thư mục của plugin (khoảng 80MB, vài phút tuỳ mạng)...");
+    log(`   Nguồn: ${URL}`);
+    fs.rmSync(workDir, { recursive: true, force: true });
+    fs.mkdirSync(workDir, { recursive: true });
+
+    const res = await fetch(URL, { redirect: "follow" });
+    if (!res.ok) {
+      log(`⚠️  Tải thất bại (HTTP ${res.status}).`);
+      return null;
+    }
+    fs.writeFileSync(zipPath, Buffer.from(await res.arrayBuffer()));
+
+    log("Đang giải nén...");
+    // Expand-Archive có sẵn trong mọi bản Windows còn được hỗ trợ; không cần
+    // cài thêm công cụ giải nén nào.
+    const unzip = tryRun(
+      "powershell",
+      [
+        "-NoProfile",
+        "-NonInteractive",
+        "-Command",
+        `Expand-Archive -LiteralPath '${zipPath}' -DestinationPath '${workDir}' -Force`,
+      ],
+      { stdio: "inherit" }
+    );
+    if (unzip.error || unzip.status !== 0) {
+      log("⚠️  Giải nén thất bại.");
+      return null;
+    }
+
+    // Zip của gyan.dev bung ra một thư mục có tên kèm số phiên bản
+    // (ffmpeg-7.1-essentials_build/bin) — nên tìm ffmpeg.exe thay vì đoán tên.
+    const found = findFile(workDir, "ffmpeg.exe", 4);
+    if (!found) {
+      log("⚠️  Giải nén xong nhưng không thấy ffmpeg.exe trong đó.");
+      return null;
+    }
+
+    fs.mkdirSync(binDir, { recursive: true });
+    const srcDir = path.dirname(found);
+    for (const exe of ["ffmpeg.exe", "ffprobe.exe"]) {
+      const src = path.join(srcDir, exe);
+      if (fs.existsSync(src)) fs.copyFileSync(src, path.join(binDir, exe));
+    }
+    fs.rmSync(workDir, { recursive: true, force: true });
+
+    if (!fs.existsSync(path.join(binDir, "ffprobe.exe"))) {
+      log("⚠️  Bản tải về thiếu ffprobe.exe — plugin cần cả hai.");
+      return null;
+    }
+    log(`✅ Đã cài ffmpeg riêng cho plugin tại: ${binDir}`);
+    log("   (không cần khởi động lại app, dùng được ngay)");
+    return binDir;
+  } catch (err) {
+    log(`⚠️  Không tải được ffmpeg: ${err.message}`);
+    return null;
+  }
+}
+
+/** Tìm một file theo tên, đi sâu tối đa `maxDepth` cấp. */
+function findFile(dir, name, maxDepth) {
+  if (maxDepth < 0) return null;
+  let entries;
+  try {
+    entries = fs.readdirSync(dir, { withFileTypes: true });
+  } catch {
+    return null;
+  }
+  for (const e of entries) {
+    if (e.isFile() && e.name === name) return path.join(dir, e.name);
+  }
+  for (const e of entries) {
+    if (e.isDirectory()) {
+      const hit = findFile(path.join(dir, e.name), name, maxDepth - 1);
+      if (hit) return hit;
+    }
+  }
+  return null;
 }
 
 function printManualFfmpegWindowsInstructions() {
@@ -628,7 +777,21 @@ async function askNarrationPace(ask, existing) {
 
 function writeConfigFiles({ workspaceDir, voiceId, apiKey, narrationPace, bgmLibrary }) {
   fs.mkdirSync(CONFIG_DIR, { recursive: true });
-  const configObj = { workspaceDir, voiceId, narrationPace: narrationPace || DEFAULT_PACE_LABEL, bgmLibrary: bgmLibrary || [] };
+  // Hợp nhất, không ghi đè: `ffmpegDir` được Bước 3 ghi vào từ trước, và các
+  // khoá về sau cũng vậy — dựng lại object từ đầu ở đây là âm thầm xoá chúng.
+  let prev = {};
+  try {
+    prev = JSON.parse(fs.readFileSync(CONFIG_PATH, "utf8")) ?? {};
+  } catch {
+    prev = {};
+  }
+  const configObj = {
+    ...prev,
+    workspaceDir,
+    voiceId,
+    narrationPace: narrationPace || DEFAULT_PACE_LABEL,
+    bgmLibrary: bgmLibrary || [],
+  };
   fs.writeFileSync(CONFIG_PATH, JSON.stringify(configObj, null, 2) + "\n", "utf8");
 
   let envContent;
@@ -672,7 +835,11 @@ function printFinalChecklist({ ffmpegInfo, remotionResult, config }) {
       ? `ffmpeg đã cài đặt: ${ffmpegInfo}`
       // Đây là chỗ DUY NHẤT còn nhắc tới phiên remote, và chỉ khi ffmpeg đã
       // thật sự thiếu sau khi restart -- tức lúc thông tin đó mới có ích.
-      : "ffmpeg CHƯA sẵn sàng. Nếu Bước 3 ở trên vừa tự cài xong ffmpeg lần đầu, đây là bình thường (Windows cần nạp lại PATH) — đóng hẳn rồi mở lại Terminal/PowerShell hoặc Claude Desktop/ChatGPT app, sau đó chạy lại init. Nếu restart rồi mà vẫn báo thiếu, nhắn cho người quản trị plugin.",
+      //
+      // Đường tải-thẳng ở Bước 3 dùng được ngay, nên tới được đây nghĩa là cả
+      // tải lẫn winget đều hỏng: gần như luôn là mạng công ty chặn, chứ không
+      // phải PATH.
+      : "ffmpeg CHƯA sẵn sàng. Thường là do mạng/tường lửa công ty chặn lúc tải. Nếu Bước 3 báo đã cài bằng winget thì đóng hẳn rồi mở lại app và chạy init một lần nữa; ngoài ra thì nhắn cho người quản trị plugin.",
   });
 
   if (!fs.existsSync(REMOTION_PKG)) {
@@ -735,7 +902,7 @@ async function main() {
 
   stepDetectOS();
   stepCheckNode();
-  const ffmpegInfo = stepFfmpeg();
+  const { info: ffmpegInfo } = await stepFfmpeg();
   const remotionResult = stepRemotion();
 
   const rl = readline.createInterface({ input: process.stdin, output: process.stdout });

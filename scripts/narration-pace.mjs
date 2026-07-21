@@ -36,6 +36,7 @@
 // A model that reads fast in the wrong language is worth nothing.
 
 import { spawn } from 'node:child_process';
+import { binaryPath, missingMessage } from './ffmpeg-path.mjs';
 
 /**
  * The levels offered at init. Labels are the author's ("2x".."5x"); the real
@@ -94,11 +95,11 @@ export function stretchAudio(srcPath, destPath, tempo) {
   }
   return new Promise((resolve, reject) => {
     const args = ['-y', '-loglevel', 'error', '-i', srcPath, '-filter:a', `atempo=${tempo.toFixed(4)}`, '-q:a', '2', destPath];
-    const child = spawn('ffmpeg', args, { stdio: ['ignore', 'pipe', 'pipe'] });
+    const child = spawn(binaryPath('ffmpeg'), args, { stdio: ['ignore', 'pipe', 'pipe'] });
     let stderr = '';
     child.stderr.on('data', (d) => (stderr += d.toString()));
     child.on('error', (err) => {
-      reject(err.code === 'ENOENT' ? new Error(`'ffmpeg' was not found on PATH. Run the init skill first.`) : err);
+      reject(err.code === 'ENOENT' ? new Error(missingMessage('ffmpeg')) : err);
     });
     child.on('close', (code) => (code === 0 ? resolve(tempo) : reject(new Error(`ffmpeg atempo failed (${code}): ${stderr.slice(-500)}`))));
   });

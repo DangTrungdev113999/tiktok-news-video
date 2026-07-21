@@ -13,6 +13,7 @@ import { access } from 'node:fs/promises';
 import { constants as fsConstants } from 'node:fs';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
+import { binaryPath, missingMessage } from './ffmpeg-path.mjs';
 
 /** Run a command and resolve with stdout, rejecting with a readable error. */
 function run(cmd, args) {
@@ -26,7 +27,7 @@ function run(cmd, args) {
       if (err.code === 'ENOENT') {
         reject(
           new Error(
-            `'${cmd}' was not found on PATH. Run \`npm run init\` first to install ffmpeg/ffprobe.`
+            missingMessage(path.basename(String(cmd)).replace(/\.exe$/i, ''))
           )
         );
       } else {
@@ -58,7 +59,7 @@ export async function probeAsset(assetPath) {
 
   let stdout;
   try {
-    stdout = await run('ffprobe', [
+    stdout = await run(binaryPath('ffprobe'), [
       '-v', 'error',
       '-print_format', 'json',
       '-show_format',

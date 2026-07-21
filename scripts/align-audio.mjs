@@ -22,6 +22,7 @@ import { readFile, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { CONFIG_DIR } from './workspace.mjs';
+import { binaryPath, missingMessage } from './ffmpeg-path.mjs';
 
 const PAD_BEFORE_SEC = 0.06; // same convention as tts-elevenlabs.mjs, for a
 const PAD_AFTER_SEC = 0.10; // consistent converged timing shape (Section D)
@@ -429,7 +430,7 @@ async function probeAudioDurationSec(audioPath) {
   // heuristic, which doesn't apply to audio-only files. Do a minimal,
   // audio-specific ffprobe call here instead.
   return new Promise((resolve, reject) => {
-    const child = spawn('ffprobe', [
+    const child = spawn(binaryPath('ffprobe'), [
       '-v', 'error',
       '-show_entries', 'format=duration',
       '-of', 'default=noprint_wrappers=1:nokey=1',
@@ -441,7 +442,7 @@ async function probeAudioDurationSec(audioPath) {
     child.stderr.on('data', (d) => (stderr += d.toString()));
     child.on('error', (err) => {
       if (err.code === 'ENOENT') {
-        reject(new Error(`'ffprobe' was not found on PATH. Run \`npm run init\` first.`));
+        reject(new Error(missingMessage('ffprobe')));
       } else reject(err);
     });
     child.on('close', (code) => {

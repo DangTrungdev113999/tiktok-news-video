@@ -20,6 +20,7 @@ import { readFile, writeFile, rename } from 'node:fs/promises';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { CONFIG_DIR, readConfig } from './workspace.mjs';
+import { binaryPath, missingMessage } from './ffmpeg-path.mjs';
 import { paceLevel, DEFAULT_PACE_LABEL, stretchAudio, rescaleTimeline } from './narration-pace.mjs';
 
 // NOTE (checked again 2026-07-17 via ElevenLabs docs + web search): the
@@ -219,12 +220,12 @@ async function callElevenLabsWithTimestamps({ text, voiceId, apiKey }) {
 
 function runFfmpeg(args) {
   return new Promise((resolve, reject) => {
-    const child = spawn('ffmpeg', args, { stdio: ['ignore', 'pipe', 'pipe'] });
+    const child = spawn(binaryPath('ffmpeg'), args, { stdio: ['ignore', 'pipe', 'pipe'] });
     let stderr = '';
     child.stderr.on('data', (d) => (stderr += d.toString()));
     child.on('error', (err) => {
       if (err.code === 'ENOENT') {
-        reject(new Error(`'ffmpeg' was not found on PATH. Run \`npm run init\` first.`));
+        reject(new Error(missingMessage('ffmpeg')));
       } else {
         reject(err);
       }

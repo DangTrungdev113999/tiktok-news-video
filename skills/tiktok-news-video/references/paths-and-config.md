@@ -28,7 +28,16 @@ CONFIG_FILE = <home>/.tiktok-news-video/config.local.json
               Fixed home-directory path, independent of CODE_ROOT and stable
               across every plugin update. Read this file's `workspaceDir`
               field to get WORKSPACE_DIR below. Also holds `voiceId`,
-              `narrationPace` (see narration-pace.md) and `bgmLibrary[]`.
+              `narrationPace` (see narration-pace.md), `bgmLibrary[]` and
+              `ffmpegDir`.
+
+              `ffmpegDir` is set only when init had to fetch ffmpeg itself
+              (Windows, nothing on PATH) — it points at `<CONFIG_DIR>/bin`.
+              Never spawn a bare `ffmpeg`/`ffprobe`: go through
+              `scripts/ffmpeg-path.mjs`'s `binaryPath()`, which prefers this
+              directory over PATH. A vendored copy is used precisely because
+              PATH is read once at process start, so a just-installed ffmpeg
+              is invisible to the session that installed it.
               The ElevenLabs API key lives alongside it in
               `<home>/.tiktok-news-video/.env` (ELEVENLABS_API_KEY=...).
 

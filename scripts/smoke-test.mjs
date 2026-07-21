@@ -19,6 +19,7 @@ import { existsSync } from 'node:fs';
 import { synthesizeScript } from './tts-elevenlabs.mjs';
 import { saveBgm } from './bgm-library.mjs';
 import { buildSpecToFile } from './build-spec.mjs';
+import { binaryPath } from './ffmpeg-path.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = path.resolve(__dirname, '..');
@@ -33,7 +34,7 @@ function run(cmd, args, opts = {}) {
 }
 
 function ffprobeJson(filePath) {
-  const result = spawnSync('ffprobe', [
+  const result = spawnSync(binaryPath('ffprobe'), [
     '-v', 'error', '-print_format', 'json', '-show_format', '-show_streams', filePath,
   ]);
   if (result.status !== 0) {
@@ -50,18 +51,18 @@ async function generateFixtures() {
   const clip = path.join(SMOKE_ASSETS_DIR, 'clip.mp4');
 
   if (!existsSync(landscape)) {
-    run('ffmpeg', ['-y', '-f', 'lavfi', '-i', 'color=c=steelblue:s=1920x1080', '-frames:v', '1', landscape]);
+    run(binaryPath('ffmpeg'), ['-y', '-f', 'lavfi', '-i', 'color=c=steelblue:s=1920x1080', '-frames:v', '1', landscape]);
   }
   if (!existsSync(portrait)) {
-    run('ffmpeg', ['-y', '-f', 'lavfi', '-i', 'color=c=indianred:s=1080x1920', '-frames:v', '1', portrait]);
+    run(binaryPath('ffmpeg'), ['-y', '-f', 'lavfi', '-i', 'color=c=indianred:s=1080x1920', '-frames:v', '1', portrait]);
   }
   if (!existsSync(square)) {
-    run('ffmpeg', ['-y', '-f', 'lavfi', '-i', 'color=c=seagreen:s=1080x1080', '-frames:v', '1', square]);
+    run(binaryPath('ffmpeg'), ['-y', '-f', 'lavfi', '-i', 'color=c=seagreen:s=1080x1080', '-frames:v', '1', square]);
   }
   if (!existsSync(clip)) {
     // 1280x720 (16:9) -- deliberately NOT 9:16, to exercise the
     // contain-blur-pad path for video per classifyAsset's crop-loss check.
-    run('ffmpeg', [
+    run(binaryPath('ffmpeg'), [
       '-y', '-f', 'lavfi', '-i', 'testsrc=size=1280x720:rate=30:duration=4',
       '-f', 'lavfi', '-i', 'anullsrc=r=44100:cl=stereo',
       '-shortest', '-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-c:a', 'aac', clip,
@@ -79,7 +80,7 @@ async function generateBgmFixture() {
   const tmpBgm = path.join(SMOKE_OUT_DIR, '_bgm-source.mp3');
   await mkdir(SMOKE_OUT_DIR, { recursive: true });
   if (!existsSync(tmpBgm)) {
-    run('ffmpeg', ['-y', '-f', 'lavfi', '-i', 'sine=frequency=220:duration=20', tmpBgm]);
+    run(binaryPath('ffmpeg'), ['-y', '-f', 'lavfi', '-i', 'sine=frequency=220:duration=20', tmpBgm]);
   }
   // Explicit workspaceDir=REPO_ROOT: smoke-test is self-contained and must
   // not depend on (or pollute) the real user-configured workspace.
