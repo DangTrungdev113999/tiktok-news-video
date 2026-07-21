@@ -169,10 +169,19 @@ function normalizeWord(w) {
 }
 
 function tokenize(text) {
+  return tokenizePaired(text).map((t) => t.norm);
+}
+
+/**
+ * Split into tokens keeping BOTH forms: `norm` for matching, `raw` for
+ * display. The raw form is what ends up on screen, so it keeps the author's
+ * capitalisation, punctuation and numerals exactly as written.
+ */
+function tokenizePaired(text) {
   return String(text)
     .split(/\s+/)
-    .map(normalizeWord)
-    .filter(Boolean);
+    .map((raw) => ({ raw, norm: normalizeWord(raw) }))
+    .filter((t) => t.norm.length > 0);
 }
 
 // Needleman-Wunsch scores. Only their ratios matter. A match must be worth
@@ -269,16 +278,21 @@ function matchWordsToScenes(transcriptWords, sceneTexts) {
   // each token came from -- the alignment must see the script as one
   // continuous utterance, exactly as it was spoken.
   const scriptTokens = [];
+  const rawTokens = [];
   const tokenScene = [];
   sceneTexts.forEach((text, sceneIdx) => {
-    for (const t of tokenize(text)) {
-      scriptTokens.push(t);
+    for (const t of tokenizePaired(text)) {
+      scriptTokens.push(t.norm);
+      rawTokens.push(t.raw);
       tokenScene.push(sceneIdx);
     }
   });
 
   if (scriptTokens.length === 0 || transcriptWords.length === 0) {
-    return sceneTexts.map(() => ({ startIdx: 0, endIdx: 0, start: 0, end: 0 }));
+    return {
+      spans: sceneTexts.map(() => ({ startIdx: 0, endIdx: 0, start: 0, end: 0 })),
+      sceneWords: sceneTexts.map(() => []),
+    };
   }
 
   const pairedWith = globalAlign(scriptTokens, normTranscript);
@@ -324,23 +338,70 @@ function matchWordsToScenes(transcriptWords, sceneTexts) {
     });
     floor = endIdx + 1 <= transcriptWords.length - 1 ? endIdx + 1 : endIdx;
   }
-  return spans;
+
+  return {
+    spans,
+    sceneWords: buildScriptWords({ rawTokens, tokenScene, pairedWith, transcriptWords, sceneCount: sceneTexts.length }),
+  };
 }
 
 /**
- * Slice per-scene word-level timing out of the full transcript, for karaoke
- * captions. Timestamps are absolute seconds within the provided audio (the
- * same timeline the narration track plays from frame 0), NOT gap-closed like
- * `timings` — captions must track real speech, not an extended scene hold.
- * @returns {Array<Array<{text:string,startSec:number,endSec:number}>>}
+ * Emit one caption word per SCRIPT word -- the author's spelling -- timed from
+ * the transcript word it aligned to.
+ *
+ * Captions must never show what speech-to-text heard. Scribe returns
+ * "Tinh Hà X2" for "Tinh Hà Say Hi", "DatViet Work" for "DatVietVAC",
+ * "Soobin" for "SOOBIN", and it spells every numeral out: "hai mươi tư" for
+ * "24", "hai trăm lẻ bảy" for "207". All of that is fine as a timing signal
+ * and unacceptable as on-screen text. Rendering the transcript put "Tinh Hà
+ * X2" in the karaoke of a shipped video on 2026-07-21.
+ *
+ * Script words with no aligned partner -- the numerals, the mis-heard names --
+ * have their timing interpolated evenly across the silence between their
+ * nearest anchored neighbours. A run of three script tokens facing one spoken
+ * phrase therefore splits that phrase's duration three ways, which is what the
+ * ear expects when it hears "hai mươi tư" under the caption "24".
  */
-function extractWordsFromSpans(transcriptWords, spans) {
-  return spans.map(({ startIdx, endIdx }) =>
-    transcriptWords
-      .slice(startIdx, endIdx + 1)
-      .map((w) => ({ text: w.word, startSec: round3(w.start), endSec: round3(w.end) }))
-      .filter((w) => w.text.length > 0)
-  );
+function buildScriptWords({ rawTokens, tokenScene, pairedWith, transcriptWords, sceneCount }) {
+  const n = rawTokens.length;
+  const startSec = new Array(n).fill(null);
+  const endSec = new Array(n).fill(null);
+
+  for (let k = 0; k < n; k++) {
+    const j = pairedWith[k];
+    if (j >= 0) {
+      startSec[k] = transcriptWords[j].start;
+      endSec[k] = transcriptWords[j].end;
+    }
+  }
+
+  const audioStart = transcriptWords[0].start;
+  const audioEnd = transcriptWords[transcriptWords.length - 1].end;
+
+  let k = 0;
+  while (k < n) {
+    if (startSec[k] !== null) { k++; continue; }
+    let runEnd = k;
+    while (runEnd < n && startSec[runEnd] === null) runEnd++;
+    const from = k > 0 ? endSec[k - 1] : audioStart;
+    const to = runEnd < n ? startSec[runEnd] : audioEnd;
+    // A run can face zero elapsed time (two anchors back to back). Give it a
+    // hair of width anyway so the caption still advances instead of stacking
+    // several words on one instant.
+    const span = Math.max(to - from, 0.001 * (runEnd - k));
+    const step = span / (runEnd - k);
+    for (let i = k; i < runEnd; i++) {
+      startSec[i] = from + step * (i - k);
+      endSec[i] = from + step * (i - k + 1);
+    }
+    k = runEnd;
+  }
+
+  const out = Array.from({ length: sceneCount }, () => []);
+  for (let i = 0; i < n; i++) {
+    out[tokenScene[i]].push({ text: rawTokens[i], startSec: round3(startSec[i]), endSec: round3(endSec[i]) });
+  }
+  return out;
 }
 
 function round3(n) {
@@ -455,9 +516,8 @@ export async function alignAudioToScenes(audioPath, sceneTexts, opts = {}) {
     throw new Error('Transcription returned zero words — cannot align scenes to empty transcript');
   }
 
-  const spans = matchWordsToScenes(transcriptWords, texts);
+  const { spans, sceneWords: words } = matchWordsToScenes(transcriptWords, texts);
   const timings = applyPadding(spans);
-  const words = extractWordsFromSpans(transcriptWords, spans);
 
   // Sanity check per design spec Section I: sum of scene durations should
   // roughly match total audio duration (±2s) — flag rather than silently
