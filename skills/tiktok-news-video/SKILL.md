@@ -41,7 +41,8 @@ So, before Step 1:
 
 - **Is the machine ready?** Two separate questions, and they fail on different
   schedules:
-  - **`~/.tiktok-news-video/config.local.json` missing** → first run ever on
+  - **the config file missing** (`<home>/.tiktok-news-video/config.local.json`,
+    resolved via `os.homedir()` — never the literal `~`, see `paths-and-config.md`) → first run ever on
     this machine. Hand off to `tiktok-news-video-init`.
   - **`$CODE_ROOT/remotion/node_modules/@remotion/cli/` missing** → the render
     engine is not installed *for this copy of the plugin*. Hand off to init
@@ -131,7 +132,7 @@ prove one exists.
   things sit, never what they say. So run
   `node scripts/verify-captions.mjs <spec.json> <sceneTexts.json>` before
   rendering. It exits non-zero on the first word that differs from the script.
-- If `~/.tiktok-news-video/config.local.json` doesn't exist yet, this is the
+- If the config file (`<home>/.tiktok-news-video/config.local.json`) doesn't exist yet, this is the
   first run on this machine — hand off to the `tiktok-news-video-init` skill
   before anything else; do not attempt to render without it.
 - Use TaskCreate/TaskUpdate (or your harness's todo tool) to track the steps

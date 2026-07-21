@@ -302,10 +302,32 @@ function stepRemotion() {
     });
     browserOk = browserEnsure.status === 0;
     if (!browserOk) {
-      log('⚠️  Tải Chrome Headless Shell gặp lỗi. Thử lại thủ công: cd remotion && npx remotion browser ensure');
+      log("");
+      log("⚠️  Tải Chrome Headless Shell gặp lỗi.");
+      log(`   Thử lại: mở terminal ở ${REMOTION_DIR} rồi chạy: npx remotion browser ensure`);
+      if (IS_WIN) {
+        log("   Trên Windows, thủ phạm thường gặp — theo thứ tự nên kiểm tra:");
+        log("   1. Windows Defender / phần mềm diệt virus quét (hoặc chặn) file Chrome ~200MB");
+        log("      vừa tải. Thử tạm dừng bảo vệ thời gian thực rồi chạy lại lệnh trên.");
+        log("   2. Proxy hoặc tường lửa công ty chặn storage.googleapis.com.");
+        log("   3. Mạng đứt giữa chừng — lệnh trên chạy lại được nhiều lần, không hại gì.");
+      }
     }
   } else {
-    log('⚠️  "npm install" trong remotion/ gặp lỗi. Kiểm tra lại thông báo lỗi phía trên.');
+    log("");
+    log('⚠️  "npm install" trong remotion/ gặp lỗi. Đọc thông báo lỗi phía trên trước.');
+    if (IS_WIN) {
+      // Đường dẫn plugin đã dài sẵn (~120 ký tự) trước khi npm lồng thêm
+      // node_modules của các gói phụ thuộc, nên rất dễ vượt giới hạn 260 ký tự
+      // mặc định của Windows. Lỗi hiện ra dưới dạng ENOENT/EPERM ở một đường
+      // dẫn dài ngoằng, chẳng gợi ý gì về nguyên nhân thật.
+      log("   Nếu lỗi nhắc tới ENOENT/EPERM kèm một đường dẫn rất dài, gần như chắc chắn là");
+      log("   giới hạn 260 ký tự (MAX_PATH) của Windows. Bật đường dẫn dài, chạy PowerShell");
+      log("   với quyền Administrator:");
+      log("     New-ItemProperty -Path 'HKLM:\\SYSTEM\\CurrentControlSet\\Control\\FileSystem' \\");
+      log("       -Name LongPathsEnabled -Value 1 -PropertyType DWORD -Force");
+      log("   Khởi động lại máy, rồi chạy lại init.");
+    }
   }
 
   const version = getRemotionVersion(npxCmd);

@@ -15,7 +15,7 @@ scene (word-level timing for Step 4's karaoke captions).
 `$CODE_ROOT/knowledge/elevenlabs-v3-tts.md`'s selection method (sparse,
 action-adjacent, matched to each scene's rhetorical role). Then run
 `scripts/tts-elevenlabs.mjs` with the scenes + `voiceId` from `$CONFIG_FILE` +
-the API key from `~/.tiktok-news-video/.env`. You get the synthesized
+the API key from `<home>/.tiktok-news-video/.env`. You get the synthesized
 narration file AND `{startSec, endSec}` **and `words[]`** per scene from the
 same call — no separate alignment step needed on this path.
 

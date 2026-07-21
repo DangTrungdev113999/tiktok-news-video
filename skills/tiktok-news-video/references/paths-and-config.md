@@ -17,14 +17,20 @@ CODE_ROOT   = the directory two levels above the SKILL.md file
               Contains: scripts/, knowledge/, remotion/ (the engine/code —
               read-only from this skill's perspective).
 
-CONFIG_FILE = ~/.tiktok-news-video/config.local.json
-              (Windows: %USERPROFILE%\.tiktok-news-video\config.local.json)
+CONFIG_FILE = <home>/.tiktok-news-video/config.local.json
+              where <home> is whatever `os.homedir()` returns — NOT the
+              literal string "~". Write `~` into a shell command and cmd
+              passes it through unexpanded, so the existence test fails, the
+              run concludes "first time on this machine", and it re-triggers
+              init on a machine that was already set up. Resolve the real
+              path in Node (`path.join(os.homedir(), '.tiktok-news-video')`)
+              or use %USERPROFILE% on Windows / $HOME on macOS.
               Fixed home-directory path, independent of CODE_ROOT and stable
               across every plugin update. Read this file's `workspaceDir`
               field to get WORKSPACE_DIR below. Also holds `voiceId`,
               `narrationPace` (see narration-pace.md) and `bgmLibrary[]`.
               The ElevenLabs API key lives alongside it in
-              `~/.tiktok-news-video/.env` (ELEVENLABS_API_KEY=...).
+              `<home>/.tiktok-news-video/.env` (ELEVENLABS_API_KEY=...).
 
               `voiceId` and `narrationPace` are saved defaults, not per-run
               answers -- do not ask about them each time. Override either for
@@ -52,7 +58,7 @@ resolve against the user's data, not the plugin's code.
 
 ## First run on a machine
 
-If `~/.tiktok-news-video/config.local.json` doesn't exist yet, this is the
+If `<home>/.tiktok-news-video/config.local.json` doesn't exist yet, this is the
 first run — hand off to the `tiktok-news-video-init` skill before anything
 else. Do not attempt to render without it.
 
