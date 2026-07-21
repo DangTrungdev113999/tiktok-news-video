@@ -252,7 +252,18 @@ async function stepFfmpeg() {
         { stdio: "inherit" }
       );
       if (install.status === 0) {
-        log("Đã cài xong ffmpeg. Windows cần NẠP LẠI PATH nên bước kiểm tra ngay bên dưới CHẮC CHẮN sẽ báo CHƯA sẵn sàng — đây là bình thường, không phải lỗi. Hãy ĐÓNG HẲN rồi MỞ LẠI ứng dụng bạn đang dùng (Terminal/PowerShell, hoặc Claude Desktop/ChatGPT app), sau đó chạy lại init một lần nữa để xác nhận ffmpeg đã sẵn sàng.");
+        // winget chỉ thêm một shim vào PATH, mà PATH thì tiến trình này đọc
+        // xong từ lúc khởi động. File thật vẫn nằm trên đĩa — tìm ra nó thì
+        // không phải bắt người dùng restart app rồi chạy init lần hai.
+        const found = findWingetFfmpegDir();
+        if (found) {
+          saveFfmpegDir(found);
+          log(`✅ Đã cài xong ffmpeg và tìm thấy tại: ${found}`);
+          log("   (không cần khởi động lại app)");
+          const info = checkFfmpeg();
+          if (info) return { info, ffmpegDir: found };
+        }
+        log("Đã cài xong ffmpeg, nhưng chưa dùng được ngay trong phiên này (Windows cần nạp lại PATH). Hãy ĐÓNG HẲN rồi MỞ LẠI ứng dụng bạn đang dùng, sau đó chạy lại init một lần nữa.");
       } else {
         log("⚠️  `winget install` gặp lỗi. Xem hướng dẫn cài thủ công bên dưới.");
         printManualFfmpegWindowsInstructions();
@@ -267,6 +278,14 @@ async function stepFfmpeg() {
     log("Linux: hãy tự cài ffmpeg bằng trình quản lý gói của bản phân phối, ví dụ:");
     log("   Ubuntu/Debian: sudo apt update && sudo apt install -y ffmpeg");
     log("   Fedora:        sudo dnf install -y ffmpeg");
+  }
+
+  // Chốt cuối: quét đĩa xem có bản nào đã nằm sẵn ở chỗ quen thuộc mà chỉ vì
+  // PATH chưa nạp nên không thấy — kể cả bản người dùng tự giải nén vào
+  // C:\ffmpeg\bin theo hướng dẫn thủ công ở lần chạy trước.
+  if (IS_WIN && !checkFfmpeg()) {
+    const found = findWingetFfmpegDir();
+    if (found) saveFfmpegDir(found);
   }
 
   info = checkFfmpeg();
@@ -310,18 +329,18 @@ function saveFfmpegDir(dir) {
  * @returns {Promise<string|null>} thư mục chứa ffmpeg.exe, hoặc null nếu hỏng
  */
 async function downloadFfmpegWindows() {
-  const URL = "https://www.gyan.dev/ffmpeg/builds/ffmpeg-release-essentials.zip";
   const binDir = path.join(CONFIG_DIR, "bin");
   const workDir = path.join(CONFIG_DIR, "ffmpeg-download");
   const zipPath = path.join(workDir, "ffmpeg.zip");
 
   try {
+    const url = await resolveFfmpegZipUrl();
     log("Đang tải sẵn ffmpeg về thư mục của plugin (khoảng 80MB, vài phút tuỳ mạng)...");
-    log(`   Nguồn: ${URL}`);
+    log(`   Nguồn: ${url}`);
     fs.rmSync(workDir, { recursive: true, force: true });
     fs.mkdirSync(workDir, { recursive: true });
 
-    const res = await fetch(URL, { redirect: "follow" });
+    const res = await fetch(url, { redirect: "follow" });
     if (!res.ok) {
       log(`⚠️  Tải thất bại (HTTP ${res.status}).`);
       return null;
@@ -373,6 +392,61 @@ async function downloadFfmpegWindows() {
     log(`⚠️  Không tải được ffmpeg: ${err.message}`);
     return null;
   }
+}
+
+/**
+ * Chọn URL zip ffmpeg để tải.
+ *
+ * KHÔNG dùng www.gyan.dev nữa: CI Windows thật trả về HTTP 503 chỉ sau 0,4
+ * giây — host đó từ chối thẳng chứ không phải mạng chậm. Bản build vẫn là của
+ * cùng tác giả, nhưng lấy từ GitHub Releases: đây chính là nơi winget tải về,
+ * và một mạng công ty đã cho cài plugin từ GitHub thì cũng cho tải chỗ này.
+ *
+ * Hỏi API để lấy bản mới nhất, và có một URL ghim sẵn để rơi vào khi API bị
+ * chặn hoặc hết hạn ngạch (API GitHub giới hạn theo IP khi gọi không token).
+ */
+const FFMPEG_ZIP_FALLBACK =
+  "https://github.com/GyanD/codexffmpeg/releases/download/8.1.2/ffmpeg-8.1.2-essentials_build.zip";
+
+async function resolveFfmpegZipUrl() {
+  try {
+    const res = await fetch("https://api.github.com/repos/GyanD/codexffmpeg/releases/latest", {
+      headers: { "User-Agent": "tiktok-news-video-init", Accept: "application/vnd.github+json" },
+    });
+    if (res.ok) {
+      const json = await res.json();
+      const asset = (json.assets ?? []).find((a) => /essentials_build\.zip$/i.test(a.name ?? ""));
+      if (asset?.browser_download_url) return asset.browser_download_url;
+    }
+  } catch {
+    // Không nói gì — bản ghim bên dưới vẫn dùng được.
+  }
+  return FFMPEG_ZIP_FALLBACK;
+}
+
+/**
+ * winget cài xong rồi, nhưng ffmpeg nằm ở đâu?
+ *
+ * winget thêm một shim vào PATH — mà PATH thì tiến trình này đã đọc xong từ
+ * lúc khởi động, nên shim đó vô hình. File thật thì vẫn nằm trên đĩa. Tìm ra
+ * nó và ghi lại đường dẫn là cứu được cả nhánh winget ngay trong phiên này,
+ * thay vì bắt người dùng khởi động lại app.
+ */
+function findWingetFfmpegDir() {
+  const roots = [
+    process.env.LOCALAPPDATA && path.join(process.env.LOCALAPPDATA, "Microsoft", "WinGet", "Packages"),
+    process.env.ProgramData && path.join(process.env.ProgramData, "chocolatey", "bin"),
+    "C:\\ffmpeg\\bin",
+  ].filter(Boolean);
+
+  for (const root of roots) {
+    if (!fs.existsSync(root)) continue;
+    const hit = findFile(root, "ffmpeg.exe", 5);
+    if (hit && fs.existsSync(path.join(path.dirname(hit), "ffprobe.exe"))) {
+      return path.dirname(hit);
+    }
+  }
+  return null;
 }
 
 /** Tìm một file theo tên, đi sâu tối đa `maxDepth` cấp. */
