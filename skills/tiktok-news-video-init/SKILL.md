@@ -55,18 +55,24 @@ If it doesn't, install and then **call Node by absolute path**:
 winget install -e --id OpenJS.NodeJS.LTS --accept-package-agreements --accept-source-agreements
 ```
 
-Then use `C:\Program Files\nodejs\node.exe` for everything — `node` on its own
-will still fail. That is not a quirk of this plugin: **Windows reads PATH once,
-when a process starts**, so the PATH entry winget just created does not exist
-for your next Bash call. Retrying `node -v` and concluding the install failed
-is the trap here; the file is on disk, only the name lookup is stale. (The same
-fact is why init vendors its own ffmpeg — see `scripts/ffmpeg-path.mjs`.)
-
-So:
+Then run init with the **absolute** path:
 
 ```
 "C:\Program Files\nodejs\node.exe" scripts/init.mjs
 ```
+
+Bare `node` may work too — measured on a real Windows runner, it became
+visible in the very next command after winget finished. But that depends on
+your Bash tool starting a fresh process each call, which is not guaranteed,
+and the absolute path costs nothing and always works. **If `node` alone fails
+right after a successful install, that is not a failed install** — the file is
+on disk, only the name lookup is stale. Never uninstall and retry; use the
+path.
+
+(Windows reads PATH once per process. A *new* process therefore sees the new
+entry; a *running* one never will. That second half is why init vendors its
+own ffmpeg instead of trusting PATH — the Node process doing the install is
+the same one that has to use the result. See `scripts/ffmpeg-path.mjs`.)
 
 `init.mjs` resolves `npm`/`npx` next to whichever node is running it, so the
 absolute path propagates through the Remotion install by itself.
