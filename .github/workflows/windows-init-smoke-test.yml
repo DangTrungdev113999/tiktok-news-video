@@ -238,8 +238,10 @@ jobs:
         shell: pwsh
         run: |
           # The workspace arrives by flag (that is how the agent hands over
-          # what the employee dragged into chat). The API key is left out on
-          # purpose: it is optional, so closed stdin must SKIP it, not hang.
+          # what the employee dragged into chat). The key would arrive in
+          # $env:ELEVENLABS_API_KEY -- not as an argument, since arguments land
+          # in the process list and in every log. It is left unset on purpose
+          # here: the key is optional, so closed stdin must SKIP it, not hang.
           # A hang here means init grew a question with no answer available.
           #
           # Piped, not `< NUL`: PowerShell reserves `<` and errors on it.

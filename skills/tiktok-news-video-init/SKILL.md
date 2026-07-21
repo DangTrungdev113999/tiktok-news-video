@@ -1,7 +1,7 @@
 ---
 name: tiktok-news-video-init
 user-invocable: true
-description: "One-time machine setup for the tiktok-news-video plugin: verifies/installs Node+ffmpeg+Remotion deps per OS, then saves the workspace folder and ElevenLabs API key you collect in chat and pass via --workspace / --api-key. Run this before the first /tiktok-news-video on a new machine."
+description: "One-time machine setup for the tiktok-news-video plugin: verifies/installs Node+ffmpeg+Remotion deps per OS, then saves the workspace folder and ElevenLabs API key you collect in chat and pass via --workspace / the ELEVENLABS_API_KEY env var. Run this before the first /tiktok-news-video on a new machine."
 argument-hint: ""
 ---
 
@@ -16,11 +16,17 @@ Chrome, a pass/fail verification checklist, and writing `config.local.json` +
 
 The employee types into the **chat box**, not into init's stdin. When you run
 init through Bash there is no keyboard attached to it, so any question it asks
-reaches nobody. Both answers therefore travel as command-line flags:
+reaches nobody. You collect both answers and hand them over:
 
 ```
-node scripts/init.mjs --workspace "<đường dẫn>" --api-key "<key>"
+ELEVENLABS_API_KEY="<key>" node scripts/init.mjs --workspace "<đường dẫn>"
 ```
+
+The two travel differently **on purpose**. A folder path is harmless; an API
+key is billed per character, and a command-line argument shows up in the
+machine's process list and gets copied verbatim into the logs of whatever tool
+ran it. An environment variable does neither. Never pass the key as an
+argument, and never echo it back into the conversation.
 
 So the sequence is:
 
@@ -28,8 +34,9 @@ So the sequence is:
    The path appears as text. Pass it to `--workspace`, quoted (it will contain
    spaces, and Windows' "Copy as path" wraps it in double quotes — init strips
    those itself).
-2. Ask for the **ElevenLabs API key** and pass it to `--api-key`. Init verifies
-   it against `GET /v1/user` and **stops on 401** rather than saving a dead key.
+2. Ask for the **ElevenLabs API key** and put it in `ELEVENLABS_API_KEY` for
+   that one command. Init verifies it against `GET /v1/user` and **stops on
+   401** rather than saving a dead key.
 3. Both land in `~/.tiktok-news-video/` (`config.local.json` + `.env`). You do
    not remember anything — that directory is the memory, and it survives every
    plugin update.
@@ -42,8 +49,9 @@ re-runs never ask again — nobody ever finds out.
 On an already-configured machine the saved workspace is reused, so a re-run
 needs no flags at all.
 
-`--api-key` is optional: skip it if the employee will always supply their own
-MP3 narration. The final checklist marks it ❌ and the next run asks again.
+`ELEVENLABS_API_KEY` is optional: leave it out if the employee will always
+supply their own MP3 narration. The final checklist marks it ❌ and the next
+run asks again.
 
 ## Everything else is already decided
 

@@ -805,7 +805,7 @@ async function callElevenLabs(url, apiKey) {
 }
 
 /**
- * Kiểm chứng key đến từ cờ `--api-key`.
+ * Kiểm chứng key đến từ biến môi trường ELEVENLABS_API_KEY.
  *
  * Khác nhánh hỏi tay ở đúng một chỗ: không có vòng "nhập lại" nào cả, vì
  * không có ai đang ngồi ở bàn phím. Key sai thì dừng để agent đi hỏi lại
@@ -823,7 +823,7 @@ async function verifyApiKey(key) {
     throw new InitInputError(
       "ElevenLabs từ chối API key này (401).\n\n" +
         "Nhờ nhân viên lấy lại key ở https://elevenlabs.io/app/settings/api-keys\n" +
-        "rồi chạy lại init với key mới.",
+        "rồi chạy lại init với ELEVENLABS_API_KEY là key mới.",
     );
   }
   log(`⚠️  Chưa kiểm chứng được key (${res.networkError ?? `HTTP ${res.status}`}). Vẫn lưu lại, nhưng nếu sai thì bước tạo giọng sẽ báo lỗi.`);
@@ -838,10 +838,16 @@ async function verifyApiKey(key) {
  * xong kịch bản và kiểm asset. Một lần gọi GET /v1/user bắt được ngay tại đây.
  */
 async function askApiKey(ask, savedKey = "") {
-  // Cùng đường đi với --workspace: nhân viên dán key vào khung chat, agent
-  // truyền xuống. Key vẫn được kiểm chứng bằng GET /v1/user y như gõ tay.
-  const fromFlag = flagValue("api-key");
-  if (fromFlag) return await verifyApiKey(fromFlag);
+  // Key đi bằng BIẾN MÔI TRƯỜNG, không phải cờ dòng lệnh như --workspace.
+  //
+  // Khác nhau vì đường dẫn thư mục vô hại còn key thì tính tiền theo ký tự:
+  // đối số dòng lệnh hiện trong danh sách tiến trình của cả máy và bị chép
+  // nguyên văn vào log của mọi tool chạy nó. Biến môi trường thì không.
+  //
+  // init cố tình KHÔNG nạp dotenv, nên biến này chỉ có khi người gọi đặt --
+  // không có chuyện .env đã lưu tự điền vào đây rồi tự "xác nhận" chính nó.
+  const fromEnv = (process.env.ELEVENLABS_API_KEY || "").trim();
+  if (fromEnv) return await verifyApiKey(fromEnv);
 
   for (;;) {
     const prompt = savedKey
@@ -860,7 +866,7 @@ async function askApiKey(ask, savedKey = "") {
         // Không nghiêm trọng bằng thiếu thư mục: key rỗng không bị ghi đè lên
         // cái gì, checklist cuối init báo ❌, và lần chạy sau vẫn hỏi lại.
         log("⏭️  Chưa có API key (init chạy không có bàn phím, không ai trả lời được).");
-        log('   Lấy key từ nhân viên rồi chạy lại kèm: --api-key "<key>"');
+        log("   Lấy key từ nhân viên rồi chạy lại với biến môi trường ELEVENLABS_API_KEY.");
         return "";
       }
       log("⏭️  Bỏ qua API key — bạn sẽ phải tự cung cấp file MP3 lời đọc cho mỗi video.");
