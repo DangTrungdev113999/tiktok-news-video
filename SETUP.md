@@ -86,9 +86,11 @@ nếu ô nhập liệu không tự gợi ý, vì cách gõ có thể khác nhau 
 
 ## Sau khi init xong
 
-1. Init tự mở sẵn thư mục `assets/` cho bạn ở cuối — kéo thả ảnh/video cần
-   dùng vào đó. Không phải gõ hay tìm đường dẫn gì cả. (Lỡ đóng mất thì
-   đường dẫn vẫn được in trong khung chat.)
+1. Gom ảnh/video của tập đó vào **một thư mục, để ở đâu cũng được** (Desktop,
+   Downloads, USB...). Đặt tên file theo đúng thứ tự bạn muốn chúng xuất hiện.
+   Rồi **kéo thư mục đó thả vào ô chat** và gọi `/clean-source` — plugin tự
+   chép nó vào đúng chỗ và đổi tên thành `anh_1`, `anh_2`, `video_1`...
+   Thư mục gốc của bạn giữ nguyên, không bị đổi gì.
 2. Gọi lệnh tạo video (`/tiktok-news-video` hoặc `$tiktok-news-video`/`@tiktok-news-video`),
    paste kịch bản dạng:
    ```
@@ -96,12 +98,14 @@ nếu ô nhập liệu không tự gợi ý, vì cách gõ có thể khác nhau 
    Scene 2: [nội dung] — video: phong-van.mp4
    ```
 3. Chọn nhạc nền khi được hỏi, phần còn lại
-   (lồng tiếng, nhạc nền, hiệu ứng, render) tự động.
+   (lồng tiếng, nhạc nền, hiệu ứng, render) tự động. **Render xong plugin tự
+   mở cửa sổ và trỏ thẳng vào file MP4** — không phải đi tìm.
 
-`assets/`, `bgm-library/`, `output/` nằm trong **thư mục workspace** bạn chọn
-lúc `/tiktok-news-video-init` (mặc định: `~/Desktop/tiktok-news-video-workspace`) — không phải
-trong thư mục cài plugin. Thư mục này KHÔNG bị mất/reset khi plugin có bản
-cập nhật mới.
+Bạn không cần biết plugin cất file ở đâu: ảnh tự vào đúng chỗ ở bước
+`/clean-source`, video thành phẩm thì tự hiện ra ở cuối. (Nếu tò mò: mọi thứ
+nằm trong `tiktok-news-video-workspace` ở thư mục người dùng của bạn, cố tình
+KHÔNG để trên Desktop để OneDrive không đồng bộ hàng trăm MB video mỗi tập.
+Thư mục này không bị mất khi plugin cập nhật.)
 
 ---
 

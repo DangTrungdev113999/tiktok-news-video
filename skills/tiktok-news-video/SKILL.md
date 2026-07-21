@@ -60,10 +60,14 @@ So, before Step 1:
   referencing assets by the names already in `assets/`. Don't invent one.
 - **Ask once whether they have a ready MP3 narration**, or whether TTS should
   generate it. Step 2 needs the answer either way.
-- **Do the assets still have their camera names?** (`IMG_4821.HEIC`,
-  `Screenshot 2026-07-20.png`.) Point the user at `/clean-source` before you
-  start — it renames a folder to `anh_1` / `video_2` and makes the `_des`
-  marker copies the tags rely on. See `asset-naming.md`.
+- **Where is this episode's material?** The employee prepares a folder
+  anywhere (Desktop, Downloads, a USB stick) and hands you its path — dragging
+  the folder into the chat box produces one. Run `/clean-source` on it before
+  you start: it **copies** the folder into `$WORKSPACE_DIR/assets/` and renames
+  the copy to `anh_1` / `video_2`, and makes the `_des` marker copies the tags
+  rely on. Never ask them to move files there themselves — the whole point is
+  that the location is the pipeline's problem, not theirs. See
+  `asset-naming.md`.
 - **Offer the voice and pace only if the user brings them up.** Both live in
   `$CONFIG_FILE` (`voiceId`, `narrationPace`) and hold across runs. A user who
   says "đọc nhanh hơn" or names a different voice for THIS video gets it via

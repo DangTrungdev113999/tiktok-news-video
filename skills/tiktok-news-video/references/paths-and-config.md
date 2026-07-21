@@ -46,9 +46,18 @@ CONFIG_FILE = <home>/.tiktok-news-video/config.local.json
               a single video via synthesizeScript's `voiceId` / `paceLabel`
               options, which never write back to this file.
 
-WORKSPACE_DIR = config.local.json's `workspaceDir` field — a normal, visible
-              folder the user chose during init (default suggestion:
-              ~/Desktop/tiktok-news-video-workspace). Contains:
+WORKSPACE_DIR = config.local.json's `workspaceDir` field. Default:
+              `<home>/tiktok-news-video-workspace` on Windows,
+              `<home>/Desktop/tiktok-news-video-workspace` on macOS.
+
+              The Windows default is deliberately NOT on the Desktop: OneDrive
+              Known Folder Move relocates Desktop into the sync root on most
+              corporate machines, which would upload every asset and every MP4
+              and can hold a handle on a file Remotion is still writing.
+              `%USERPROFILE%` itself is never a redirected known folder.
+              Nobody has to navigate here: assets arrive via clean-source, and
+              render.mjs reveals the finished MP4 in Explorer/Finder.
+              Contains:
                 $WORKSPACE_DIR/assets/         user's reusable image/video library
                 $WORKSPACE_DIR/bgm-library/    saved BGM tracks
                 $WORKSPACE_DIR/brand/          one subfolder per brand kit

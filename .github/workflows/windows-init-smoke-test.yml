@@ -54,7 +54,10 @@ jobs:
           foreach ($n in @("IMG_10.jpg", "IMG_2.jpg", "clip final.MOV")) {
             Set-Content -Path (Join-Path $dir $n) -Value "x"
           }
-          $out = node scripts/clean-source.mjs $dir --dry-run 2>&1 | Out-String
+          # --in-place: this job has no config.local.json, and the default now
+          # copies into $WORKSPACE_DIR/assets. The copy behaviour is asserted
+          # in the render job, which has run init. Here we only test renaming.
+          $out = node scripts/clean-source.mjs $dir --dry-run --in-place 2>&1 | Out-String
           Write-Host $out
           if ($LASTEXITCODE -ne 0) { Write-Host "clean-source exited $LASTEXITCODE"; exit 1 }
           # The silent-failure mode printed NOTHING and exited 0. Assert content.
@@ -129,6 +132,38 @@ jobs:
           # session that just installed it still can't see it. A vendored copy
           # under CONFIG_DIR has no such problem, and this asserts it.
           node -e "import('./scripts/ffmpeg-path.mjs').then(m => { const s = m.status(); console.log(JSON.stringify(s)); if (!s.ok) { console.error('ffmpeg/ffprobe not resolvable right after init'); process.exit(1) } })"
+
+      - name: The workspace is NOT inside OneDrive sync, and clean-source lands in it
+        shell: pwsh
+        run: |
+          $cfg = Get-Content "$env:USERPROFILE\.tiktok-news-video\config.local.json" -Raw | ConvertFrom-Json
+          $ws = $cfg.workspaceDir
+          Write-Host "workspace: $ws"
+
+          # A workspace under Desktop is a workspace inside OneDrive Known
+          # Folder Move on a corporate machine -- every asset and every MP4
+          # uploaded, and OneDrive holding a handle on a file Remotion is still
+          # writing. The default must sit beside Desktop, not in it.
+          if ($ws -match '[\\/](Desktop|OneDrive)[\\/]') {
+            Write-Host "FAIL: default workspace is on Desktop/OneDrive: $ws"; exit 1
+          }
+          Write-Host "OK - workspace is off the synced known folders"
+
+          # An employee's folder lives wherever they made it. clean-source has
+          # to bring it INTO assets/, because buildAssetIndex looks nowhere
+          # else -- renaming in place produced a tidy table and then a run that
+          # died at Step 1 with "no file in assets/ matches anh_1".
+          $src = Join-Path $env:RUNNER_TEMP "Hop bao 12-8"
+          New-Item -ItemType Directory -Force -Path $src | Out-Null
+          foreach ($n in @("IMG_2.jpg", "IMG_10.jpg")) { Set-Content -Path (Join-Path $src $n) -Value "x" }
+          node scripts/clean-source.mjs $src
+          if ($LASTEXITCODE -ne 0) { Write-Host "clean-source exited $LASTEXITCODE"; exit 1 }
+
+          $landed = Join-Path $ws "assets\Hop-bao-12-8\anh_1.jpg"
+          if (-not (Test-Path $landed)) { Write-Host "FAIL: expected $landed"; exit 1 }
+          # COPY, not move: renaming someone's photos is hard to undo.
+          if (-not (Test-Path (Join-Path $src "IMG_2.jpg"))) { Write-Host "FAIL: the original folder was modified"; exit 1 }
+          Write-Host "OK - copied into $landed, original untouched"
 
       - name: Full pipeline smoke test (probe -> TTS mock -> build-spec -> render)
         run: node scripts/smoke-test.mjs

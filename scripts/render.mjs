@@ -153,9 +153,44 @@ child.on("error", (err) => {
   fail(`Failed to spawn the Remotion CLI: ${err.message}`);
 });
 
+/**
+ * Mở cửa sổ file và trỏ sẵn vào video vừa render xong.
+ *
+ * Đây là điểm DUY NHẤT trong cả pipeline mà nhân viên cần tới thư mục
+ * workspace. Ảnh đầu vào đã tự đi vào đó qua clean-source, nên thứ duy nhất
+ * họ phải tìm là file MP4 ở đầu ra — và thứ họ có trong tay chỉ là một dòng
+ * đường dẫn dài trong khung chat.
+ *
+ * `explorer /select,` trỏ thẳng vào file chứ không chỉ mở thư mục, nên không
+ * phải dò trong một thư mục có sẵn spec.json, narration.mp3 và các file phụ.
+ * macOS: `open -R` làm đúng việc đó.
+ */
+function revealOutput(file) {
+  if (process.env.CI || process.env.TIKTOK_NEWS_VIDEO_NO_OPEN) return;
+  const isWin = process.platform === "win32";
+  const isMac = process.platform === "darwin";
+  // Linux không có lệnh "reveal" thống nhất — mở thư mục chứa là đủ.
+  const [cmd, cmdArgs] = isWin
+    ? ["explorer", [`/select,${file}`]]
+    : isMac
+      ? ["open", ["-R", file]]
+      : ["xdg-open", [path.dirname(file)]];
+  try {
+    // detached: cửa sổ phải sống tiếp sau khi tiến trình này thoát.
+    // explorer.exe trả về exit code khác 0 kể cả khi mở thành công, nên kết
+    // quả ở đây cố tình không được kiểm tra.
+    const opener = spawn(cmd, cmdArgs, { stdio: "ignore", detached: true });
+    opener.on("error", () => {});
+    opener.unref();
+  } catch {
+    // Không mở được thì đường dẫn vẫn nằm ở dòng log ngay trên.
+  }
+}
+
 child.on("exit", (code) => {
   if (code === 0) {
     console.log(`[render] done -> ${outputPath}`);
+    revealOutput(outputPath);
   }
   process.exit(code ?? 1);
 });

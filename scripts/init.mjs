@@ -35,7 +35,7 @@ import fs from "node:fs";
 import path from "node:path";
 import os from "node:os";
 import readline from "node:readline";
-import { spawn, spawnSync } from "node:child_process";
+import { spawnSync } from "node:child_process";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { CONFIG_DIR, CONFIG_PATH, ENV_PATH, DEFAULT_WORKSPACE_DIR, ensureWorkspaceSubdirs } from "./workspace.mjs";
 import { binaryPath } from "./ffmpeg-path.mjs";
@@ -1001,41 +1001,11 @@ async function main() {
   }
 
   printFinalChecklist({ ffmpegInfo, remotionResult, config });
-  openAssetsFolder(config.workspaceDir);
-}
-
-/**
- * Mở sẵn thư mục assets/ bằng Explorer (Windows) / Finder (macOS).
- *
- * Init đã thôi HỎI đường dẫn thư mục — nhưng chiều ngược lại vẫn còn: xong
- * init rồi, việc kế tiếp của nhân viên là bỏ ảnh/video vào đúng chỗ, và cái
- * họ có trong tay chỉ là một dòng chữ đường dẫn dài trong khung chat. Copy
- * một dòng như thế rồi dán vào thanh địa chỉ Explorer là một thao tác thừa,
- * và cũng là chỗ dễ dán nhầm.
- *
- * Mở thẳng cửa sổ ra thì họ chỉ việc kéo file vào. Đây là cách nhập/xuất
- * đường dẫn tiện nhất cho người không rành máy: không nhập gì cả.
- */
-function openAssetsFolder(workspaceDir) {
-  if (!workspaceDir) return;
-  // CI không có màn hình, và mở cửa sổ file ở đó chỉ tạo tiến trình rác.
-  if (process.env.CI || process.env.TIKTOK_NEWS_VIDEO_NO_OPEN) return;
-
-  const assetsDir = path.join(workspaceDir, "assets");
-  const cmd = IS_MAC ? "open" : IS_WIN ? "explorer" : "xdg-open";
-  try {
-    // detached + unref: cửa sổ file phải sống tiếp sau khi init thoát.
-    // explorer.exe trả về exit code khác 0 kể cả khi mở thành công, nên ở đây
-    // không kiểm tra kết quả — mở được hay không thì dòng log bên dưới vẫn là
-    // thứ người dùng cần.
-    const child = spawn(cmd, [assetsDir], { stdio: "ignore", detached: true });
-    child.on("error", () => {});
-    child.unref();
-  } catch {
-    // Không mở được cũng không sao — đường dẫn đã in ở trên.
-  }
-  log(`\n📂 Đã mở sẵn thư mục ảnh/video cho bạn: ${assetsDir}`);
-  log("   Kéo thả ảnh và video cần dùng vào đây, rồi quay lại đây gõ lệnh tạo video.");
+  // Cố tình KHÔNG mở thư mục assets/ ở đây nữa. Nhân viên không bao giờ phải
+  // tự bỏ file vào đó: họ chuẩn bị thư mục ảnh ở bất cứ đâu, kéo vào khung
+  // chat, và clean-source chép nó vào workspace. Chỗ duy nhất họ cần một cửa
+  // sổ file là lúc lấy video thành phẩm — nên việc mở cửa sổ nằm ở cuối
+  // scripts/render.mjs, chứ không phải ở đây.
 }
 
 // Only run the installer when invoked as a script. Without this guard, a test

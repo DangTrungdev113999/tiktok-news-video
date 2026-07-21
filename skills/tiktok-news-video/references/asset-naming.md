@@ -9,6 +9,32 @@ Neither half may drift without the other. This file is the shared definition;
 `scripts/clean-source.mjs` and `scripts/resolve-asset.mjs` are its executable
 halves.
 
+## Where the folder comes from, and where it goes
+
+The employee prepares a folder of source material **anywhere** — Desktop,
+Downloads, a USB stick — and hands `clean-source` that path (dragging the
+folder into the chat box produces it). `clean-source` then **copies** the
+folder into `$WORKSPACE_DIR/assets/<folder>/` and renames the copy.
+
+Both halves matter:
+
+- **It copies into the workspace** because `buildAssetIndex` only ever reads
+  `$WORKSPACE_DIR/assets`. Renaming in place — what this did before
+  2026-07-21 — printed a perfect rename table and then failed at Step 1 with
+  *"no file in assets/ matches anh_1"*, a message that names neither the real
+  problem nor the fix. Nothing should ask the employee to remember a location.
+- **It copies rather than moves** because renaming someone's photos is already
+  hard to undo. The original folder is left byte-for-byte untouched, so a bad
+  run costs nothing to redo.
+
+The destination name is the source folder's name with characters NTFS forbids
+(`< > : " / \ | ? *`) replaced by `-`; Vietnamese diacritics are kept. If that
+destination already exists the run **stops** — merging two sets into one folder
+would renumber the pictures and silently re-point every `_des` marker.
+
+`--in-place` skips the copy (for a folder already under `assets/`, and for
+tests).
+
 ## The emitted names
 
 Inside one folder (`$WORKSPACE_DIR/assets/<folder>/`):
