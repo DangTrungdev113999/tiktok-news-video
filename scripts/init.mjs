@@ -35,7 +35,7 @@ import fs from "node:fs";
 import path from "node:path";
 import os from "node:os";
 import readline from "node:readline";
-import { spawnSync } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { CONFIG_DIR, CONFIG_PATH, ENV_PATH, DEFAULT_WORKSPACE_DIR, ensureWorkspaceSubdirs } from "./workspace.mjs";
 import { binaryPath } from "./ffmpeg-path.mjs";
@@ -665,6 +665,14 @@ async function stepConfigure(ask, { advanced = false } = {}) {
   log(
     "Đây LUÔN là một thư mục bình thường, cố định trên máy bạn — không đổi dù plugin có update bao nhiêu lần."
   );
+  // Cách lấy đường dẫn dễ nhất trên từng hệ, nói ngay tại chỗ cần dùng. Cả
+  // hai cách đều cho ra chuỗi dán được thẳng vào đây: expandHome() bóc dấu
+  // nháy mà "Copy as path" của Windows tự thêm vào.
+  log(
+    IS_WIN
+      ? 'Mẹo: mở File Explorer tới thư mục đó, giữ Shift + chuột phải vào nó → "Copy as path", rồi dán vào đây.'
+      : 'Mẹo: mở Finder tới thư mục đó, chuột phải → giữ phím Option → "Copy ... as Pathname", rồi dán vào đây.'
+  );
   const workspaceAnswer = await ask(
     `Bạn muốn dùng thư mục workspace nào?\n(Enter để dùng mặc định: ${savedWorkspace || DEFAULT_WORKSPACE_DIR})\n> `
   );
@@ -993,6 +1001,41 @@ async function main() {
   }
 
   printFinalChecklist({ ffmpegInfo, remotionResult, config });
+  openAssetsFolder(config.workspaceDir);
+}
+
+/**
+ * Mở sẵn thư mục assets/ bằng Explorer (Windows) / Finder (macOS).
+ *
+ * Init đã thôi HỎI đường dẫn thư mục — nhưng chiều ngược lại vẫn còn: xong
+ * init rồi, việc kế tiếp của nhân viên là bỏ ảnh/video vào đúng chỗ, và cái
+ * họ có trong tay chỉ là một dòng chữ đường dẫn dài trong khung chat. Copy
+ * một dòng như thế rồi dán vào thanh địa chỉ Explorer là một thao tác thừa,
+ * và cũng là chỗ dễ dán nhầm.
+ *
+ * Mở thẳng cửa sổ ra thì họ chỉ việc kéo file vào. Đây là cách nhập/xuất
+ * đường dẫn tiện nhất cho người không rành máy: không nhập gì cả.
+ */
+function openAssetsFolder(workspaceDir) {
+  if (!workspaceDir) return;
+  // CI không có màn hình, và mở cửa sổ file ở đó chỉ tạo tiến trình rác.
+  if (process.env.CI || process.env.TIKTOK_NEWS_VIDEO_NO_OPEN) return;
+
+  const assetsDir = path.join(workspaceDir, "assets");
+  const cmd = IS_MAC ? "open" : IS_WIN ? "explorer" : "xdg-open";
+  try {
+    // detached + unref: cửa sổ file phải sống tiếp sau khi init thoát.
+    // explorer.exe trả về exit code khác 0 kể cả khi mở thành công, nên ở đây
+    // không kiểm tra kết quả — mở được hay không thì dòng log bên dưới vẫn là
+    // thứ người dùng cần.
+    const child = spawn(cmd, [assetsDir], { stdio: "ignore", detached: true });
+    child.on("error", () => {});
+    child.unref();
+  } catch {
+    // Không mở được cũng không sao — đường dẫn đã in ở trên.
+  }
+  log(`\n📂 Đã mở sẵn thư mục ảnh/video cho bạn: ${assetsDir}`);
+  log("   Kéo thả ảnh và video cần dùng vào đây, rồi quay lại đây gõ lệnh tạo video.");
 }
 
 // Only run the installer when invoked as a script. Without this guard, a test

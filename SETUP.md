@@ -86,7 +86,9 @@ nếu ô nhập liệu không tự gợi ý, vì cách gõ có thể khác nhau 
 
 ## Sau khi init xong
 
-1. Copy ảnh/video vào thư mục `assets/`.
+1. Init tự mở sẵn thư mục `assets/` cho bạn ở cuối — kéo thả ảnh/video cần
+   dùng vào đó. Không phải gõ hay tìm đường dẫn gì cả. (Lỡ đóng mất thì
+   đường dẫn vẫn được in trong khung chat.)
 2. Gọi lệnh tạo video (`/tiktok-news-video` hoặc `$tiktok-news-video`/`@tiktok-news-video`),
    paste kịch bản dạng:
    ```
