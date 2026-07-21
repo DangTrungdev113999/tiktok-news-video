@@ -104,6 +104,27 @@ every one of them measures geometry and none reads a character.
 
 A failure here is not a warning to report at Step 6. Fix it and rebuild.
 
+### What this gate does NOT cover
+
+It flattens every caption group into one stream and compares word for word, so
+it proves the captions are **the right words in the right order** — and says
+nothing about *when* each word appears. The two failures that produced it sat
+on different axes:
+
+| Failure | Caught by |
+|---|---|
+| caption text came from the transcript | this gate |
+| a screen's words got eaten by its neighbour (screen 13 → 0s) | `align-audio.mjs`'s starved-scene warning |
+
+A drift that keeps every word correct but shifts the timing passes both. So on
+the MP3 path, **still eyeball a rendered frame or two** against the moment
+they should appear. A green run here does not retire that.
+
+Note also that on the **TTS path this gate is a no-op** — caption text comes
+straight from the script there and always did. Its real coverage is forced
+alignment. Run it anyway; a check that only runs when you suspect trouble is a
+check that runs after the damage.
+
 ## Step 5 — Render
 
 Create the dated + slugged output folder first:
@@ -113,7 +134,13 @@ $WORKSPACE_DIR/output/<YYYY-MM-DD>_<slug>/
     final.mp4
     narration.mp3
     spec.json        # kept for reproducibility
+    scene-texts.json # the author's per-screen text, in order
 ```
+
+Write `scene-texts.json` before Step 4b — it is the second argument to
+`verify-captions.mjs`, and the gate is not runnable without it. Keeping it
+beside the spec also means a later re-check needs nothing from the chat
+transcript.
 
 Then run:
 

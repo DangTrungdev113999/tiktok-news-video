@@ -406,7 +406,7 @@ async function stepConfigure(ask) {
   const voiceId = await askVoiceId(ask, apiKey);
 
   // --- Mức kéo nhanh lời đọc ---
-  const narrationPace = await askNarrationPace(existingConfig?.narrationPace);
+  const narrationPace = await askNarrationPace(ask, existingConfig?.narrationPace);
 
   return {
     workspaceDir,
@@ -533,7 +533,7 @@ async function askVoiceId(ask, apiKey) {
  * năm, tức 1.5x). Nên mỗi dòng bắt buộc in kèm hệ số thật và số từ/phút --
  * nếu chỉ đưa cái nhãn thì người chọn đang bị đánh lừa.
  */
-async function askNarrationPace(existing) {
+async function askNarrationPace(ask, existing) {
   section("Nhịp đọc");
   log("ElevenLabs đọc tiếng Việt khá thong thả. Video tin tức TikTok cần nhanh hơn,");
   log("nên sau khi tạo giọng, plugin có thể kéo nhanh lời đọc lên. Cao độ giữ nguyên");
