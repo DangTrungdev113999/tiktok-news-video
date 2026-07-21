@@ -22,8 +22,14 @@ CONFIG_FILE = ~/.tiktok-news-video/config.local.json
               Fixed home-directory path, independent of CODE_ROOT and stable
               across every plugin update. Read this file's `workspaceDir`
               field to get WORKSPACE_DIR below. Also holds `voiceId`,
-              `bgmLibrary[]`. The ElevenLabs API key lives alongside it in
+              `narrationPace` (see narration-pace.md) and `bgmLibrary[]`.
+              The ElevenLabs API key lives alongside it in
               `~/.tiktok-news-video/.env` (ELEVENLABS_API_KEY=...).
+
+              `voiceId` and `narrationPace` are saved defaults, not per-run
+              answers -- do not ask about them each time. Override either for
+              a single video via synthesizeScript's `voiceId` / `paceLabel`
+              options, which never write back to this file.
 
 WORKSPACE_DIR = config.local.json's `workspaceDir` field — a normal, visible
               folder the user chose during init (default suggestion:

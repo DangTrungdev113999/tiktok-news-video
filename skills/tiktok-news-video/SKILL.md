@@ -39,12 +39,40 @@ descriptions to drift apart).
 
 So, before Step 1:
 
+- **No `config.local.json`?** First run on this machine — hand off to
+  `tiktok-news-video-init` and don't render until it reports passing.
 - **No scene script in `$ARGUMENTS`?** Ask the user to paste it in chat,
   referencing assets by the names already in `assets/`. Don't invent one.
 - **Ask once whether they have a ready MP3 narration**, or whether TTS should
   generate it. Step 2 needs the answer either way.
-- **No `config.local.json`?** First run on this machine — hand off to
-  `tiktok-news-video-init` and don't render until it reports passing.
+- **Do the assets still have their camera names?** (`IMG_4821.HEIC`,
+  `Screenshot 2026-07-20.png`.) Point the user at `/clean-source` before you
+  start — it renames a folder to `anh_1` / `video_2` and makes the `_des`
+  marker copies the tags rely on. See `asset-naming.md`.
+- **Offer the voice and pace only if the user brings them up.** Both live in
+  `$CONFIG_FILE` (`voiceId`, `narrationPace`) and hold across runs. A user who
+  says "đọc nhanh hơn" or names a different voice for THIS video gets it via
+  `synthesizeScript`'s `voiceId` / `paceLabel` options — a per-run override
+  that does not touch their saved defaults. Don't raise it unprompted; it is
+  settled configuration, not a decision the pipeline needs made.
+
+### Everything that can stop the run, checked BEFORE the paid call
+
+Step 2 spends the user's ElevenLabs quota. Every condition that would abort the
+run has to be tested before it, or a missing folder costs real money and a
+whole re-run:
+
+| Check | Where it lives |
+|---|---|
+| every asset filename resolves to exactly one file | `script-input.md` |
+| at least one valid brand kit exists | `hook-and-brand.md` |
+| every tag key is one the pipeline implements | `tags/README.md` |
+
+The asset check was already gated this way. The brand check was not — it used
+to sit at Step 4, so `buildSpec` threw *"a scene has isHook: true but no
+brandKit was provided"* AFTER the narration had been paid for and synthesised.
+Run `listBrands()` up front; you do not need to ask WHICH brand yet, only to
+prove one exists.
 
 ## Autonomy contract (read first)
 
@@ -52,13 +80,30 @@ So, before Step 1:
   tighten, or re-order it. There is no house-style pass and no script-review
   pause — both were deleted 2026-07-20. Only `ttsText` (audio-tag markup) is
   yours to compose, and it changes delivery, never wording.
-- **You pause for the user in exactly ONE place:** the BGM choice (Step 3). A
-  SECOND pause — which brand kit to use (Step 4) — only fires conditionally:
-  skip it silently if exactly one brand folder exists, stop with a clear error
-  if zero valid ones exist, only ask when 2+ exist. Everything else — asset
-  classification, effect selection, TTS/alignment, rendering, retrying a
-  failed render — is automatic. Don't ask permission for deterministic steps
-  the spec already decided.
+- **You stop for the user in exactly FOUR places, and no others.** Three are
+  unconditional, one fires only sometimes:
+
+  | # | Stop | When |
+  |---|---|---|
+  | 1 | Paste the scene script | only if `$ARGUMENTS` is empty |
+  | 2 | Ready MP3, or shall TTS read it? | always, once, before Step 2 |
+  | 3 | Which BGM (Step 3) | always |
+  | 4 | Which brand kit | **only when 2+ valid kits exist** — silent with one, hard error with zero |
+
+  Everything else — asset classification, effect selection, TTS/alignment,
+  rendering, retrying a failed render — is automatic. Don't ask permission for
+  deterministic steps the spec already decided.
+
+  (This list used to read "exactly ONE place: the BGM choice" while the same
+  file told you to ask two other questions. An agent trusting the contract
+  over the prose would silently skip the MP3 question and synthesise narration
+  the user already had.)
+- **An unimplemented tag key stops the run.** `tags/README.md` lists what
+  exists; a key outside it is reported and the run halts until the user says
+  what they meant. This is a fifth stop, but a rare and unwelcome one — it
+  means the script asked for something the pipeline cannot do, and guessing
+  would ship a video missing the effect the author asked for. Do NOT treat it
+  as a warning to note at Step 6.
 - **Every failure self-fixes.** A missing asset file, a render error, a
   duration mismatch between narration and scene timing — you diagnose and fix
   (re-probe assets, re-run alignment, adjust `spec.json`, re-render), not stop
@@ -66,6 +111,12 @@ So, before Step 1:
 - **Verify by pixels, not by preview.** Anything that changes what's on screen
   is checked by rendering a frame and measuring it — see
   `references/text-layout.md`.
+- **Pixels are not enough for text.** Every geometric check — the black-band
+  scan, the safe-zone measurement, the smoke test — passed on a video whose
+  karaoke read "Tinh Hà X2" instead of "Tinh Hà Say Hi". They measure where
+  things sit, never what they say. So run
+  `node scripts/verify-captions.mjs <spec.json> <sceneTexts.json>` before
+  rendering. It exits non-zero on the first word that differs from the script.
 - If `~/.tiktok-news-video/config.local.json` doesn't exist yet, this is the
   first run on this machine — hand off to the `tiktok-news-video-init` skill
   before anything else; do not attempt to render without it.
@@ -77,14 +128,19 @@ So, before Step 1:
 Read `references/paths-and-config.md` before Step 1 — resolving CODE_ROOT vs
 WORKSPACE_DIR wrongly silently destroys the user's data on the next update.
 
-| # | Step | Pauses? | Detail |
+| # | Step | Stops? | Detail |
 |---|---|---|---|
-| 1 | Parse the scene script; verify every asset exists | — | `script-input.md` |
-| 2 | Resolve narration audio + word timing | — | `narration-and-bgm.md` |
+| 1 | Parse the script; verify every asset, every tag key, and that ≥1 brand kit exists | on failure | `script-input.md`, `tags/README.md`, `hook-and-brand.md` |
+| 2 | Resolve narration audio + word timing — **the paid step** | — | `narration-and-bgm.md`, `narration-pace.md` |
 | 3 | Resolve BGM | **yes** | `narration-and-bgm.md` |
-| 4 | Classify motion, mark the hook screen, resolve the brand, build `spec.json` | conditional | `motion.md`, `hook-and-brand.md`, `build-and-render.md` |
+| 4 | Classify motion, mark the hook screen, pick the brand, build `spec.json` | only if 2+ brands | `motion.md`, `hook-and-brand.md`, `build-and-render.md` |
+| 4b | `verify-captions.mjs` — the karaoke says what the author wrote | on failure | `build-and-render.md` |
 | 5 | Render | — | `build-and-render.md` |
 | 6 | Report where it landed | — | `build-and-render.md` |
+
+Step 1 now carries the brand **existence** check (not the choice — that stays
+at Step 4). Everything that can abort a run belongs before Step 2, because
+Step 2 is where the user's money goes.
 
 ## Explicit scope guard
 

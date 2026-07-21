@@ -395,8 +395,7 @@ async function stepConfigure(ask) {
   log("");
   log("Lấy API key ở: https://elevenlabs.io/app/settings/api-keys");
   log("Nếu bạn luôn tự cung cấp file MP3 lời đọc riêng, có thể bỏ qua key (nhấn Enter).");
-  const apiKeyAnswer = await ask("\nNhập ElevenLabs API key (Enter để bỏ qua): ");
-  const apiKey = apiKeyAnswer.trim();
+  const apiKey = await askApiKey(ask);
 
   // --- Voice ID ---
   log("\nvoice_id là mã giọng đọc, lấy trong Voice Library của ElevenLabs.");
@@ -404,8 +403,7 @@ async function stepConfigure(ask) {
   log("bấm vào giọng nào bạn thích rồi copy ID của nó.");
   log(`\nMặc định là ${DEFAULT_VOICE_ID} — "Hạnh", nữ trẻ giọng Bắc, rõ chữ, hợp tin tức.`);
   log("(Chọn sau khi thu thử 14 giọng Việt trên cùng một kịch bản.)");
-  const voiceAnswer = await ask("\nNhập voice_id (Enter để dùng Hạnh): ");
-  const voiceId = voiceAnswer.trim() || DEFAULT_VOICE_ID;
+  const voiceId = await askVoiceId(ask, apiKey);
 
   // --- Mức kéo nhanh lời đọc ---
   const narrationPace = await askNarrationPace(existingConfig?.narrationPace);
@@ -418,6 +416,109 @@ async function stepConfigure(ask) {
     bgmLibrary: Array.isArray(existingConfig?.bgmLibrary) ? existingConfig.bgmLibrary : [],
     wrote: true,
   };
+}
+
+/**
+ * Gọi ElevenLabs, trả về { ok, status, json } — không bao giờ throw.
+ *
+ * Init phải chạy được cả khi không có mạng: mất mạng là chuyện của lúc này,
+ * không phải bằng chứng rằng key sai. Nên lỗi mạng được phân biệt rõ với
+ * lỗi 401/400 và không bị báo thành "key hỏng".
+ */
+async function callElevenLabs(url, apiKey) {
+  try {
+    const res = await fetch(url, { headers: { "xi-api-key": apiKey } });
+    const json = await res.json().catch(() => null);
+    return { ok: res.ok, status: res.status, json };
+  } catch (err) {
+    return { ok: false, status: null, networkError: err.message };
+  }
+}
+
+/**
+ * Hỏi API key VÀ kiểm chứng nó ngay.
+ *
+ * Trước đây init nhận bất cứ chuỗi nào người dùng gõ. Key sai một ký tự chỉ
+ * lộ ra ở Bước 2 của lần làm video đầu tiên -- giữa chừng, sau khi đã dựng
+ * xong kịch bản và kiểm asset. Một lần gọi GET /v1/user bắt được ngay tại đây.
+ */
+async function askApiKey(ask) {
+  for (;;) {
+    const answer = (await ask("\nNhập ElevenLabs API key (Enter để bỏ qua): ")).trim();
+    if (!answer) {
+      log("⏭️  Bỏ qua API key — bạn sẽ phải tự cung cấp file MP3 lời đọc cho mỗi video.");
+      return "";
+    }
+
+    const res = await callElevenLabs("https://api.elevenlabs.io/v1/user", answer);
+    if (res.ok) {
+      const sub = res.json?.subscription ?? {};
+      const left = (sub.character_limit ?? 0) - (sub.character_count ?? 0);
+      log(`✅ Key hợp lệ${sub.tier ? ` (gói ${sub.tier})` : ""}${sub.character_limit ? `, còn ${left.toLocaleString("vi-VN")} ký tự` : ""}.`);
+      return answer;
+    }
+    if (res.status === 401) {
+      log("❌ Key bị ElevenLabs từ chối (401). Kiểm tra lại ở https://elevenlabs.io/app/settings/api-keys");
+      const retry = await ask("Nhập lại? (Y/n): ");
+      if (retry.trim().toLowerCase().startsWith("n")) return answer;
+      continue;
+    }
+    // Mạng lỗi, hoặc ElevenLabs đang trục trặc: giữ key, nói rõ là CHƯA kiểm được.
+    log(`⚠️  Chưa kiểm chứng được key (${res.networkError ?? `HTTP ${res.status}`}). Vẫn lưu lại, nhưng nếu sai thì bước tạo giọng sẽ báo lỗi.`);
+    return answer;
+  }
+}
+
+/**
+ * Hỏi voice_id VÀ kiểm chứng nó nói được tiếng Việt.
+ *
+ * Cái vế thứ hai mới là quan trọng, và nó đến từ một sai lầm có thật: một
+ * model đọc nhanh nhưng không hỗ trợ tiếng Việt đã lọt qua tới tận lúc người
+ * dùng nghe thử. Giọng cũng vậy -- voice_id mặc định cũ là bản clone để đọc
+ * tiếng Indonesia. `verified_languages` trong API trả lời được câu này, nên
+ * không có lý do gì để đoán.
+ */
+async function askVoiceId(ask, apiKey) {
+  for (;;) {
+    const answer = (await ask("\nNhập voice_id (Enter để dùng Hạnh): ")).trim() || DEFAULT_VOICE_ID;
+
+    if (!apiKey) {
+      log(`⏭️  Chưa có API key nên chưa kiểm chứng được giọng. Lưu ${answer}.`);
+      return answer;
+    }
+
+    const res = await callElevenLabs(`https://api.elevenlabs.io/v1/voices/${encodeURIComponent(answer)}`, apiKey);
+    if (!res.ok) {
+      if (res.status === 400 || res.status === 404) {
+        log(`❌ Không tìm thấy voice_id "${answer}" trên tài khoản này.`);
+        const retry = await ask("Nhập lại? (Y/n): ");
+        if (retry.trim().toLowerCase().startsWith("n")) return answer;
+        continue;
+      }
+      log(`⚠️  Chưa kiểm chứng được giọng (${res.networkError ?? `HTTP ${res.status}`}). Vẫn lưu ${answer}.`);
+      return answer;
+    }
+
+    const v = res.json ?? {};
+    const langs = new Set([
+      ...(v.verified_languages ?? []).map((l) => l.language),
+      ...(v.labels?.language ? [v.labels.language] : []),
+    ]);
+    const labels = v.labels ?? {};
+    const traits = [labels.gender, labels.age, labels.accent, labels.descriptive].filter(Boolean).join(", ");
+    log(`✅ Giọng: "${v.name}"${traits ? ` — ${traits}` : ""}`);
+
+    if (!langs.has("vi")) {
+      log("");
+      log("⚠️  CẢNH BÁO: giọng này KHÔNG được ElevenLabs xác nhận là nói tiếng Việt.");
+      log(`   Ngôn ngữ nó hỗ trợ: ${[...langs].join(", ") || "(không khai báo)"}`);
+      log("   Một giọng sai ngôn ngữ vẫn đọc ra âm thanh, nhưng phát âm chữ Việt");
+      log("   bằng bộ âm của tiếng khác — nghe là biết ngay.");
+      const keep = await ask("Vẫn dùng giọng này? (y/N): ");
+      if (!keep.trim().toLowerCase().startsWith("y")) continue;
+    }
+    return answer;
+  }
 }
 
 /**

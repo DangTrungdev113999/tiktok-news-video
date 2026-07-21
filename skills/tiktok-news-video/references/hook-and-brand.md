@@ -34,6 +34,23 @@ prepared by the plugin owner (co-designed with Claude) and handed to employees
 as a folder to drop in — there is no registration command. See
 `docs/superpowers/specs/2026-07-18-multi-brand-kit-design.md`.
 
+### Split in two: prove one EXISTS at Step 1, pick WHICH at Step 4
+
+`buildSpec` throws `'a scene has isHook: true but no brandKit was provided'`
+when no kit is available — and Step 4 is after Step 2, which is where the
+ElevenLabs quota is spent. An employee who forgot to copy the brand folder
+used to pay for the whole narration before hitting that error.
+
+So call `listBrands()` **twice**, or once and keep the result:
+
+- **At Step 1**, before any paid call: if `brands[]` is empty, stop. Report
+  `invalid[]` here too — a folder that failed validation is usually the folder
+  the user thought they had.
+- **At Step 4**: resolve which one, asking only when 2+ exist.
+
+The choice genuinely belongs at Step 4 (nothing before it needs a brand), but
+the *existence* is a precondition for the entire run.
+
 Call `listBrands(workspaceDir)` from `scripts/brand-kit.mjs`, then:
 
 1. **Report any entries in its `invalid[]` array by name in chat** (e.g. "bỏ

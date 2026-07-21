@@ -83,6 +83,27 @@ silently in a way that looks identical to success.
 `buildSpec` refuses to build if any asset fails to probe — it throws listing
 every missing file rather than rendering a partially-broken video.
 
+## Step 4b — Do the captions say what the author wrote?
+
+```
+node scripts/verify-captions.mjs <spec.json> <sceneTexts.json>
+```
+
+`sceneTexts.json` is the ordered per-screen `text` array — the author's words,
+including the hook screen (the script skips it, since the hook carries no
+captions). Exit 0 means every caption word matches the script in order; exit
+non-zero prints the first divergences with context.
+
+**Run it every time, not just when something looks off.** On the user-MP3 path
+the captions are assembled from a forced alignment against a speech-to-text
+transcript, and when that goes wrong it goes wrong invisibly: on 2026-07-21 a
+video shipped reading "Tinh Hà X2" for "Tinh Hà Say Hi", "DatViet Work" for
+"DatVietVAC", and "hai mươi tư" everywhere the script said "24". The
+black-band scan, the safe-zone measurement and the smoke test all passed —
+every one of them measures geometry and none reads a character.
+
+A failure here is not a warning to report at Step 6. Fix it and rebuild.
+
 ## Step 5 — Render
 
 Create the dated + slugged output folder first:
@@ -127,7 +148,10 @@ Tell the user:
 - where the final video landed
   (`$WORKSPACE_DIR/output/<dated-slug>/final.mp4`)
 - the video's duration
-- a one-line summary of what effects / BGM / voice / brand were used
+- a one-line summary of what effects / BGM / brand were used, plus the **voice
+  and the pace level** (`config.local.json`'s `voiceId` + `narrationPace`, or
+  whatever was overridden for this run) — the pace changes how the whole video
+  feels and the user cannot tell 1.3× from 1.4× by reading a filename
 - **every entry in `spec.warnings`**, plus what you resolved each
   `focus_object` to (which person, which coordinates, which cue word) — the
   author is the only one who can catch a misidentification
