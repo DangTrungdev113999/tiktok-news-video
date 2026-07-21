@@ -93,13 +93,41 @@ if (missing.length > 0) {
 
 fs.mkdirSync(path.dirname(outputPath), { recursive: true });
 
-// On Windows, `npx` is a shim resolved as `npx.cmd`; spawning the bare
-// "npx" without a shell throws ENOENT there. Keep shell:false (safe
-// arg-passing for paths with spaces) and just pick the right binary name.
-const npxCmd = process.platform === "win32" ? "npx.cmd" : "npx";
+// Spawn Node directly on Remotion's CLI entry -- never `npx`.
+//
+// Two separate Windows problems make `npx` the wrong tool here, and they pull
+// in opposite directions, which is why the previous comment reasoned its way
+// into a broken answer:
+//
+//   1. On Windows `npx` is `npx.cmd`, a batch file. Since Node's
+//      CVE-2024-27980 fix (18.20.2 / 20.12.2+), spawning a .cmd/.bat WITHOUT
+//      `shell` throws EINVAL. So `shell:false` cannot work.
+//   2. But `shell:true` on Windows joins the argv array into one command
+//      string without quoting, so `--props=C:\Users\John Doe\spec.json` splits
+//      at the space. So `shell:true` cannot work either.
+//
+// `process.execPath` is the running Node binary -- a real .exe, spawnable with
+// shell:false, which keeps every argument passed as its own argv entry. Paths
+// with spaces stay intact and no batch file is involved on any platform.
+//
+// It also removes a silent failure mode: `npx` with no local install does not
+// error, it QUIETLY downloads Remotion from the registry (possibly a different
+// version than package.json pins) and re-fetches ~93MB of Chrome mid-render.
+// Resolving the file ourselves turns that into the honest message below.
+const cliEntry = path.join(remotionDir, "node_modules", "@remotion", "cli", "remotion-cli.js");
+if (!fs.existsSync(cliEntry)) {
+  fail(
+    `Remotion is not installed in ${remotionDir}.\n` +
+    `  Run the init skill (tiktok-news-video-init) first -- it installs the render engine\n` +
+    `  and pre-downloads Chrome. Answer "N" when it asks whether to reconfigure, and your\n` +
+    `  saved API key, voice and pace are kept.\n` +
+    `  Note this is expected after every plugin UPDATE: config lives in your home folder\n` +
+    `  and survives, but node_modules lives beside the code, which is version-pinned.`
+  );
+}
 
 const args = [
-  "remotion",
+  cliEntry,
   "render",
   "src/index.ts",
   compositionId,
@@ -112,17 +140,17 @@ console.log(`[render] code root:  ${codeRoot}`);
 console.log(`[render] workspace:  ${workspaceDir}`);
 console.log(`[render] spec:       ${specPath}`);
 console.log(`[render] output:     ${outputPath}`);
-console.log(`[render] > ${npxCmd} ${args.join(" ")}`);
+console.log(`[render] > node ${args.join(" ")}`);
 console.log(`[render] (cwd: ${remotionDir})`);
 
-const child = spawn(npxCmd, args, {
+const child = spawn(process.execPath, args, {
   cwd: remotionDir,
   stdio: "inherit",
   env: process.env,
 });
 
 child.on("error", (err) => {
-  fail(`Failed to spawn npx: ${err.message}`);
+  fail(`Failed to spawn the Remotion CLI: ${err.message}`);
 });
 
 child.on("exit", (code) => {

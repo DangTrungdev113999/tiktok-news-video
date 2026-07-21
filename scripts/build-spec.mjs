@@ -945,9 +945,17 @@ export async function buildSpec({ scenes, workspaceDir, narrationAudioPath, bgmA
     height: HEIGHT,
     scenes: sceneSpecs,
   };
-  if (narrationAudioPath) spec.narrationAudioPath = narrationAudioPath;
+  // Force forward slashes on the way in. These two fields go straight to
+  // Remotion's `staticFile()`, which is a URL builder and treats a backslash
+  // as a literal character, not a separator -- so a Windows caller that built
+  // them with path.relative() (the natural choice, and what smoke-test.mjs
+  // modelled) would ship `output\run\narration.mp3` and render silently
+  // without audio. Normalising HERE covers every caller at once, and matches
+  // what scene assets already get from path.posix.join() above.
+  const toPosix = (p) => String(p).split(path.sep).join('/');
+  if (narrationAudioPath) spec.narrationAudioPath = toPosix(narrationAudioPath);
   if (bgmAudioPath) {
-    spec.bgmAudioPath = bgmAudioPath;
+    spec.bgmAudioPath = toPosix(bgmAudioPath);
     spec.bgmVolume = bgmVolume ?? DEFAULT_BGM_VOLUME;
   }
   if (captionLines.length > 0) spec.captions = captionLines;

@@ -18,6 +18,7 @@
 
 import { readdir, rename, copyFile, stat } from 'node:fs/promises';
 import path from 'node:path';
+import { pathToFileURL } from 'node:url';
 
 const IMAGE_EXT = new Set(['.jpg', '.jpeg', '.png', '.webp', '.heic', '.heif', '.gif', '.bmp', '.tif', '.tiff', '.avif']);
 const VIDEO_EXT = new Set(['.mp4', '.mov', '.m4v', '.webm', '.mkv', '.avi']);
@@ -116,7 +117,19 @@ export async function cleanSource(folder, { dryRun = false } = {}) {
 }
 
 // CLI
-if (import.meta.url === `file://${process.argv[1]}`) {
+//
+// `file://${process.argv[1]}` is a macOS-only accident. It works there because
+// a POSIX path already starts with "/", so "file://" + "/Users/..." lands on
+// the three slashes a file URL needs. On Windows argv[1] is "C:\Users\..." and
+// the comparison is ALWAYS false -- verified, not assumed.
+//
+// The failure was silent and therefore worse than a crash: the script printed
+// nothing, renamed nothing, created no `_des` copies, and exited 0. The agent
+// reported success on a folder it had never touched, and the whole `anh_1` /
+// `target N` naming contract collapsed further downstream.
+//
+// `pathToFileURL` is what the other six CLI scripts in this repo already use.
+if (import.meta.url === pathToFileURL(process.argv[1]).href) {
   const args = process.argv.slice(2);
   const dryRun = args.includes('--dry-run');
   const folder = args.find((a) => !a.startsWith('--'));

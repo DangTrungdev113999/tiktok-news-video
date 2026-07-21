@@ -105,6 +105,14 @@ function parseEnvFile(content) {
 }
 
 function expandHome(p) {
+  // Strip a wrapping quote pair FIRST. Windows 11's "Copy as path" (the
+  // default in Explorer's context menu) puts the path on the clipboard
+  // already wrapped in double quotes: "C:\Users\nv\Desktop\ws". `"` is an
+  // illegal NTFS filename character, so without this the very first question
+  // of init ends in an unhandled mkdirSync throw and a stack trace -- which
+  // tells a non-technical employee nothing. macOS's "Copy as Pathname" adds
+  // no quotes, which is why this was never seen on the author's machine.
+  p = String(p).trim().replace(/^"(.*)"$/s, "$1").replace(/^'(.*)'$/s, "$1").trim();
   if (p.startsWith("~")) return path.join(os.homedir(), p.slice(1));
   return p;
 }

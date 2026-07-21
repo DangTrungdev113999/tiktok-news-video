@@ -39,8 +39,22 @@ descriptions to drift apart).
 
 So, before Step 1:
 
-- **No `config.local.json`?** First run on this machine — hand off to
-  `tiktok-news-video-init` and don't render until it reports passing.
+- **Is the machine ready?** Two separate questions, and they fail on different
+  schedules:
+  - **`~/.tiktok-news-video/config.local.json` missing** → first run ever on
+    this machine. Hand off to `tiktok-news-video-init`.
+  - **`$CODE_ROOT/remotion/node_modules/@remotion/cli/` missing** → the render
+    engine is not installed *for this copy of the plugin*. Hand off to init
+    too, and tell the user to answer **N** when it asks whether to
+    reconfigure — their key, voice and pace are kept.
+
+  The second is the common case and the config check cannot see it. Config
+  lives in the home folder and survives forever; `node_modules` (~600MB) and
+  Chrome live beside the code, in a **version-pinned** directory, so **every
+  plugin update lands the user in a fresh copy with no engine.** Before this
+  check existed the run went straight to Step 2, spent the ElevenLabs quota,
+  then reached a render that silently began downloading Remotion and ~93MB of
+  Chrome through `npx` with no explanation.
 - **No scene script in `$ARGUMENTS`?** Ask the user to paste it in chat,
   referencing assets by the names already in `assets/`. Don't invent one.
 - **Ask once whether they have a ready MP3 narration**, or whether TTS should

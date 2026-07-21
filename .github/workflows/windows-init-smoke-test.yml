@@ -1,43 +1,133 @@
-name: Windows init smoke test
+name: Windows
+
+# The previous version of this file ran init.mjs and nothing else, with
+# `continue-on-error: true` on every meaningful step. It could not fail. That
+# is exactly why two Windows blockers shipped while the repo appeared to have
+# Windows CI:
+#
+#   - render.mjs spawned `npx.cmd` with shell:false -> EINVAL, nothing rendered
+#   - clean-source.mjs's `file://${process.argv[1]}` CLI guard is never true on
+#     Windows, so it exited 0 having renamed nothing
+#
+# Neither is subtle. Both were invisible because nothing ran them on Windows
+# and asserted. Every step below is allowed to fail the build.
 
 on:
+  push:
+    branches: [main]
+  pull_request:
   workflow_dispatch: {}
 
 jobs:
-  init-on-real-windows:
+  # Fast checks: pure Node, no ffmpeg, no Chrome. These catch the two blockers.
+  cli-and-paths:
     runs-on: windows-latest
-    timeout-minutes: 20
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
-
       - uses: actions/setup-node@v4
         with:
           node-version: "20"
 
-      - name: node -v / npm -v
-        run: |
-          node -v
-          npm -v
-
-      - name: Run init.mjs non-interactively (all prompts default via empty stdin)
+      - name: Every CLI entry guard works on Windows
         shell: pwsh
         run: |
-          "" | node scripts/init.mjs
-        continue-on-error: true
+          # `file://` + argv[1] only forms a valid file URL when the path starts
+          # with "/", i.e. on POSIX. Ban the pattern outright -- but only in
+          # CODE. clean-source.mjs quotes the bad pattern in a comment
+          # explaining why it was wrong, and that comment must not fail CI.
+          $bad = Select-String -Path scripts/*.mjs -Pattern 'file://\$\{process\.argv\[1\]\}' |
+                 Where-Object { $_.Line.TrimStart() -notmatch '^(//|\*|/\*)' }
+          if ($bad) {
+            Write-Host "These files build a file URL by hand; use pathToFileURL(process.argv[1]).href:"
+            $bad | ForEach-Object { Write-Host "  $($_.Path):$($_.LineNumber)" }
+            exit 1
+          }
+          Write-Host "OK - no hand-built file:// comparisons"
 
-      - name: ffmpeg -version (post-init check, same-process PATH -- expected to fail)
-        run: ffmpeg -version
-        continue-on-error: true
-
-      - name: Refresh PATH from registry (simulates closing/reopening the app) then ffmpeg -version
+      - name: clean-source actually runs and produces a mapping
         shell: pwsh
         run: |
-          $env:Path = [System.Environment]::GetEnvironmentVariable("Path","Machine") + ";" + [System.Environment]::GetEnvironmentVariable("Path","User")
-          ffmpeg -version
-        continue-on-error: true
+          $dir = Join-Path $env:RUNNER_TEMP "clean-src-test"
+          New-Item -ItemType Directory -Force -Path $dir | Out-Null
+          # Deliberately unsorted and camera-named, to prove numeric ordering too.
+          foreach ($n in @("IMG_10.jpg", "IMG_2.jpg", "clip final.MOV")) {
+            Set-Content -Path (Join-Path $dir $n) -Value "x"
+          }
+          $out = node scripts/clean-source.mjs $dir --dry-run 2>&1 | Out-String
+          Write-Host $out
+          if ($LASTEXITCODE -ne 0) { Write-Host "clean-source exited $LASTEXITCODE"; exit 1 }
+          # The silent-failure mode printed NOTHING and exited 0. Assert content.
+          if ($out -notmatch "IMG_2\.jpg\s+->\s+anh_1\.jpg") { Write-Host "FAIL: IMG_2 should sort before IMG_10 and become anh_1"; exit 1 }
+          if ($out -notmatch "IMG_10\.jpg\s+->\s+anh_2\.jpg") { Write-Host "FAIL: expected IMG_10 -> anh_2"; exit 1 }
+          # Lower-cased on purpose by planRenames -- assert the real behaviour,
+          # not the input casing.
+          if ($out -notmatch "video_1\.mov") { Write-Host "FAIL: expected the .MOV to become video_1.mov"; exit 1 }
+          if ($out -notmatch "anh_1_des\.jpg") { Write-Host "FAIL: expected a _des marker copy"; exit 1 }
+          Write-Host "OK - clean-source ran, ordered numerically, and planned _des copies"
 
-      - name: Show config.local.json / .env (no secrets expected -- key left blank)
+      - name: A path with a space survives argument passing
+        shell: pwsh
         run: |
-          Get-Content config.local.json -ErrorAction SilentlyContinue
-          Get-Content .env -ErrorAction SilentlyContinue
-        continue-on-error: true
+          # render.mjs must not route args through a shell: `--props=C:\...\a b\spec.json`
+          # splits at the space when it does. Prove argv arrives in one piece.
+          $dir = Join-Path $env:RUNNER_TEMP "dir with space"
+          New-Item -ItemType Directory -Force -Path $dir | Out-Null
+          $probe = Join-Path $env:RUNNER_TEMP "argv-probe.mjs"
+          Set-Content -Path $probe -Value 'console.log(process.argv[2]);'
+          $target = Join-Path $dir "spec.json"
+          $got = node $probe "--props=$target"
+          if ($got -ne "--props=$target") { Write-Host "FAIL: got [$got] want [--props=$target]"; exit 1 }
+          Write-Host "OK - [$got]"
+
+      - name: init.mjs survives a Windows "Copy as path" (quoted) answer
+        shell: pwsh
+        run: |
+          # Explorer copies paths wrapped in double quotes; `"` is illegal in a
+          # filename, so an unstripped quote used to kill init at question one.
+          $ws = Join-Path $env:RUNNER_TEMP "ws-quoted"
+          $script = @"
+          import { strict as assert } from 'node:assert';
+          const src = await import('node:fs').then(m => m.promises.readFile('scripts/init.mjs','utf8'));
+          assert.match(src, /replace\(\/\^"\(\.\*\)"\\\$\/s/, 'init.mjs must strip a wrapping quote pair in expandHome');
+          console.log('OK - expandHome strips quotes');
+          "@
+          Set-Content -Path (Join-Path $env:RUNNER_TEMP "q.mjs") -Value $script
+          node (Join-Path $env:RUNNER_TEMP "q.mjs")
+
+  # The real thing: install Remotion, install ffmpeg, render a video on Windows.
+  render:
+    runs-on: windows-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Install ffmpeg
+        run: choco install ffmpeg -y --no-progress
+
+      - name: Install the render engine
+        working-directory: remotion
+        run: |
+          npm ci
+          npx remotion browser ensure
+
+      - name: Full pipeline smoke test (probe -> TTS mock -> build-spec -> render)
+        run: node scripts/smoke-test.mjs
+
+      - name: The rendered spec must use forward slashes for audio
+        shell: pwsh
+        run: |
+          # staticFile() is a URL builder: a backslash is a literal character,
+          # not a separator, so `output\run\narration.mp3` renders silently
+          # without audio. path.relative() on Windows produces exactly that.
+          $spec = Get-ChildItem -Recurse -Filter "spec.json" -Path "output" -ErrorAction SilentlyContinue | Select-Object -First 1
+          if (-not $spec) { Write-Host "no spec.json produced by the smoke test"; exit 1 }
+          $j = Get-Content $spec.FullName -Raw | ConvertFrom-Json
+          foreach ($f in @("narrationAudioPath", "bgmAudioPath")) {
+            $v = $j.$f
+            if ($v -and $v.Contains("\")) { Write-Host "FAIL: $f contains a backslash: $v"; exit 1 }
+            if ($v) { Write-Host "OK - $f = $v" }
+          }

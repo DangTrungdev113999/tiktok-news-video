@@ -167,9 +167,15 @@ trace as "done, but broken."
 Faster than a full render when checking layout or a single scene:
 
 ```
-cd $CODE_ROOT/remotion && npx remotion still src/index.ts MainVideo <out.png> \
-  --props=<spec.json> --public-dir=$WORKSPACE_DIR --frame=<n>
+node scripts/render-still.mjs <spec.json> <out.png> <WORKSPACE_DIR> <frame>
 ```
+
+Pass every path as an **absolute path you substituted yourself**. Do not write
+`$CODE_ROOT` or `$WORKSPACE_DIR` into a command: those are sh-style variables,
+and an employee's machine may be running cmd or PowerShell, where they expand
+to nothing. Same reason there is no `cd ... &&` here — `&&` is not valid in
+cmd. (This block used to be a POSIX one-liner with all three problems, which
+quietly disabled the mandatory pixel check on Windows.)
 
 Note that a `spec.json` from an older run may carry a stale `brandKit` shape
 and fail — resolve a fresh brand kit into it first.
