@@ -285,6 +285,13 @@ jobs:
       - name: Full pipeline smoke test (probe -> TTS mock -> build-spec -> render)
         run: node scripts/smoke-test.mjs
 
+      # smoke-test.mjs carries its own inline brand kit and never reads
+      # $WORKSPACE_DIR/brand/, so every brand-FOLDER feature -- logo, hook
+      # background, caption geometry, typeface -- had no Windows coverage at
+      # all. This builds a throwaway brand from real files and renders it.
+      - name: A brand kit's own files survive to pixels
+        run: node scripts/smoke-test-brand.mjs
+
       - name: The rendered spec must use forward slashes for audio
         shell: pwsh
         run: |
