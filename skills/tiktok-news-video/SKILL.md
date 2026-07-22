@@ -19,7 +19,7 @@ one for the step you're on rather than reading them all up front.
 | `references/paths-and-config.md` | CODE vs WORKSPACE dirs, config file, where the house rules live |
 | `references/script-input.md` | Step 1: parse the scene script (used verbatim) |
 | `references/asset-naming.md` | How `anh_1` / `ảnh 1` resolves to a real file |
-| `references/narration-and-bgm.md` | Steps 2–3: TTS or forced alignment, BGM choice |
+| `references/narration-and-bgm.md` | Steps 1b–3: pick the voice, TTS or forced alignment, BGM choice |
 | `references/narration-pace.md` | Why the read gets sped up after synthesis, and by how much |
 | `references/motion.md` | Which movement each asset gets, and per-asset overrides |
 | `references/tags/README.md` | The tag grammar; one file per tag key, opened on demand |
@@ -68,8 +68,8 @@ So, before Step 1:
   rely on. Never ask them to move files there themselves — the whole point is
   that the location is the pipeline's problem, not theirs. See
   `asset-naming.md`.
-- **The voice is asked EVERY run, on the TTS path** — see "Step 2b — Voice" in
-  `narration-and-bgm.md`. It is no longer a setting; init does not ask for it
+- **The voice is asked EVERY run, on the TTS path** — see "Step 1b — Voice" in
+  `narration-and-bgm.md`. Ask it BEFORE Step 2, which is the paid call. It is no longer a setting; init does not ask for it
   and `$CONFIG_FILE` no longer records one. Skip the question entirely when the
   user supplied their own MP3: that run synthesizes nothing.
 - **The pace is still settled configuration.** `narrationPace` lives in
@@ -101,15 +101,16 @@ prove one exists.
   tighten, or re-order it. There is no house-style pass and no script-review
   pause — both were deleted 2026-07-20. Only `ttsText` (audio-tag markup) is
   yours to compose, and it changes delivery, never wording.
-- **You stop for the user in exactly FOUR places, and no others.** Three are
-  unconditional, one fires only sometimes:
+- **You stop for the user in exactly FIVE places, and no others.** Two are
+  unconditional, three are conditional:
 
   | # | Stop | When |
   |---|---|---|
   | 1 | Paste the scene script | only if `$ARGUMENTS` is empty |
   | 2 | Ready MP3, or shall TTS read it? | always, once, before Step 2 |
-  | 3 | Which BGM (Step 3) | always |
-  | 4 | Which brand kit | **only when 2+ valid kits exist** — silent with one, hard error with zero |
+  | 3 | Which voice (Step 1b) | **TTS path only** — skipped when the user brought an MP3 |
+  | 4 | Which BGM (Step 3) | always |
+  | 5 | Which brand kit | **only when 2+ valid kits exist** — silent with one, hard error with zero |
 
   Everything else — asset classification, effect selection, TTS/alignment,
   rendering, retrying a failed render — is automatic. Don't ask permission for
@@ -118,7 +119,8 @@ prove one exists.
   (This list used to read "exactly ONE place: the BGM choice" while the same
   file told you to ask two other questions. An agent trusting the contract
   over the prose would silently skip the MP3 question and synthesise narration
-  the user already had.)
+  the user already had. So: adding a pause anywhere means editing THIS table in
+  the same commit. The voice stop was added 2026-07-22.)
 - **An unimplemented tag key stops the run.** `tags/README.md` lists what
   exists; a key outside it is reported and the run halts until the user says
   what they meant. This is a fifth stop, but a rare and unwelcome one — it
@@ -152,6 +154,7 @@ WORKSPACE_DIR wrongly silently destroys the user's data on the next update.
 | # | Step | Stops? | Detail |
 |---|---|---|---|
 | 1 | Parse the script; verify every asset, every tag key, and that ≥1 brand kit exists | on failure | `script-input.md`, `tags/README.md`, `hook-and-brand.md` |
+| 1b | Pick the narration voice (TTS path only) | **yes** | `narration-and-bgm.md` |
 | 2 | Resolve narration audio + word timing — **the paid step** | — | `narration-and-bgm.md`, `narration-pace.md` |
 | 3 | Resolve BGM | **yes** | `narration-and-bgm.md` |
 | 4 | Classify motion, mark the hook screen, pick the brand, build `spec.json` | only if 2+ brands | `motion.md`, `hook-and-brand.md`, `build-and-render.md` |

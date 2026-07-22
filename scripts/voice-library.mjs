@@ -98,6 +98,31 @@ async function writeVoicesFile(workspaceDir, voices) {
  * The .env read pulls exactly one line and never touches, logs, or returns
  * ELEVENLABS_API_KEY, which lives in the same file.
  */
+/**
+ * The ElevenLabs key, read from the same .env `synthesizeScript` reads.
+ *
+ * NOT `process.env.ELEVENLABS_API_KEY`. That was a real bug, not a style
+ * point: nothing in the make-video flow exports the key, so the CLI's
+ * validation silently degraded to "chưa có API key — vẫn lưu" on every real
+ * invocation, and a mistyped voice_id sailed into the library to fail later at
+ * render time. It passed testing only because the test exported the key first,
+ * which is a condition the real flow does not create.
+ *
+ * The value is returned to the caller and handed to `describeVoice` as a
+ * header. It is never logged, never echoed, and never placed on a command
+ * line -- argv is visible in the machine's process list and is copied verbatim
+ * into tool logs.
+ */
+async function apiKeyFromEnvFile() {
+  try {
+    const env = await readFile(path.join(CONFIG_DIR, '.env'), 'utf8');
+    const m = /^ELEVENLABS_API_KEY=(.*)$/m.exec(env);
+    return m ? m[1].trim() : '';
+  } catch {
+    return '';
+  }
+}
+
 async function legacyVoiceId() {
   const fromConfig = readConfig().voiceId;
   if (typeof fromConfig === 'string' && fromConfig.trim()) return fromConfig.trim();
@@ -242,9 +267,7 @@ if (isMain()) {
       console.error('Usage: node scripts/voice-library.mjs check <voiceId>');
       process.exit(1);
     }
-    // The key travels in the environment, never on the command line: argv is
-    // visible in the machine's process list and is copied verbatim into logs.
-    const info = await describeVoice(id, process.env.ELEVENLABS_API_KEY ?? '');
+    const info = await describeVoice(id, await apiKeyFromEnvFile());
     console.log(JSON.stringify(info, null, 2));
   } else if (cmd === 'add') {
     const [id, ...labelParts] = rest;
@@ -254,7 +277,7 @@ if (isMain()) {
     }
     // Kiểm TRƯỚC khi lưu. Một voice_id gõ sai mà lọt vào thư viện sẽ nằm đó
     // im lặng cho tới lúc render và báo lỗi ở một chỗ chẳng liên quan gì.
-    const info = await describeVoice(id, process.env.ELEVENLABS_API_KEY ?? '');
+    const info = await describeVoice(id, await apiKeyFromEnvFile());
     if (!info.found && !info.unverified) {
       console.error(`[voice-library] ❌ ElevenLabs không có voice_id "${id}". Kiểm tra lại rồi thêm.`);
       process.exit(1);

@@ -33,7 +33,7 @@ CONFIG_FILE = <home>/.tiktok-news-video/config.local.json
 
               It may also still hold a legacy `voiceId`. Do NOT read it: the
               voice is chosen per video from `<WORKSPACE_DIR>/voices.json`
-              (see narration-and-bgm.md, Step 2b). Init no longer writes the
+              (see narration-and-bgm.md, Step 1b). Init no longer writes the
               key, and voice-library.mjs migrates any surviving one into
               voices.json on first use.
 

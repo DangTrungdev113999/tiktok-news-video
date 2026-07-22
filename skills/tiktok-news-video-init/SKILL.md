@@ -60,7 +60,7 @@ only make a non-technical user guess at a decision whose right answer is always
 the default: the workspace folder and the pace (`4x` = atempo 1.40).
 
 **Init does not ask about the voice at all, and does not set one.** The voice
-is picked per video from `<workspace>/voices.json` — see Step 2b of the main
+is picked per video from `<workspace>/voices.json` — see Step 1b of the main
 skill's `narration-and-bgm.md`. It was a setting here once; that put the
 decision furthest from the moment it matters, and forced every channel one
 person runs to sound the same.
