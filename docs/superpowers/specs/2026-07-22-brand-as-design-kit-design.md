@@ -136,21 +136,49 @@ larger and higher; one with all three positions out of bounds produced three
 clamps and three warnings; the real brand (no `caption` key) renders unchanged;
 a misspelled key lands in `invalid[]` with the allowed list.
 
-### Deliberately not in this slice: the font family
+## Slice 4: the typeface (done)
 
-The user asked for it, and it is the next slice rather than this one.
+A brand folder may hold `font.woff2` / `.woff` / `.ttf` / `.otf`. It is
+resolved to `fontPath` and applied by `MainVideo` to the headline, the badge
+label and the captions **together** — resolved once, at the composition root,
+so there is no code path that gives them different families. That is the whole
+reason `layout.ts` exists (see below).
+
+**The load is gated.** `useBrandFont` holds `delayRender()` until
+`FontFace.load()` resolves. Without the gate the failure mode is not "the font
+didn't work" — Remotion renders frames independently, so it would be a handful
+of frames scattered through the video in the fallback typeface. That is the
+hardest kind of defect to catch in review and the easiest to ship.
+
+**A font that fails to load calls `cancelRender`.** The brand asked for this
+typeface; shipping a video quietly set in a different one is worse than not
+shipping. Verified: a corrupt file exits 1 with the path named, and writes no
+output.
+
+**Registered across `weight: "100 900"`.** The components ask for 700. A face
+declaring only its own weight would make Chrome synthesise a bold on top of a
+file that is usually already bold, and the text would render smeared. Brands
+supply the weight they want in the file.
+
+The house font stays in the CSS stack behind the brand's, so a glyph the
+brand's file lacks — Vietnamese diacritics being the realistic case — is drawn
+by Oswald rather than by whatever the browser would otherwise pick.
+
+Verified: with a brand font, frame 2 (the earliest hook frame) already renders
+in it, along with the badge and the captions; removing the file returns
+everything to Oswald.
+
+### Why this could not be part of slice 3
+
 `layout.ts` exists so the hook headline and the captions can never load
 different families again — the Baloo2/Inter drift it was written to kill. A
 per-brand font therefore has to move headline, badge, and captions together;
 it is brand-wide typography, not caption geometry.
 
-It also needs a font-loading gate (`delayRender`/`continueRender` around
-`FontFace.load()`), because a frame rendered before the font arrives shows the
-fallback — a determinism risk that does not belong bundled into a pure-data
-change.
+It also needed the font-loading gate above — a determinism risk that did not
+belong bundled into a pure-data change.
 
 ### Later slices
 
-1. Per-brand font family, per the above.
-2. Whatever comes next — the point of the optional-with-default rule is that
-   this list never has to be finished up front.
+Nothing queued. The point of the optional-with-default rule is that this list
+never has to be finished up front.

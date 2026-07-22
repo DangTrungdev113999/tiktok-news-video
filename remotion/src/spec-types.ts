@@ -239,6 +239,13 @@ export interface BrandKit {
    * the defaults deliberately live in exactly one place.
    */
   caption?: CaptionOverrides | null;
+  /**
+   * The brand's own typeface, e.g. "brand/mat-vu-tac-quyen/font.woff2". Null
+   * falls back to the house font. It applies to the headline, the badge and
+   * the captions together -- never to one of them, which is the drift
+   * remotion/src/layout.ts was written to prevent.
+   */
+  fontPath?: string | null;
   /** Ribbon badge text, e.g. "Mật Vụ Tác Quyền". */
   badgeLabel: string;
   /** 3-stop gradient for the badge background, e.g. ["#FF9A3D", "#FF6A00", "#F04E00"]. */

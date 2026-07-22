@@ -83,6 +83,23 @@ const LOGO_FILENAMES = ['logo.svg', 'logo.png'];
  */
 const CAPTION_KEYS = ['left', 'rightInset', 'bottomInset', 'fontSize', 'lineHeight', 'wordGap'];
 
+/**
+ * The brand's typeface, applied to the hook headline, the badge label AND the
+ * karaoke captions -- all three, always, never one of them.
+ *
+ * That is not a convenience; it is the reason remotion/src/layout.ts exists.
+ * The hook once loaded Baloo2 while the captions loaded Inter, and the result
+ * read as two unrelated videos stitched together. A per-brand font that could
+ * move only the captions would rebuild exactly that.
+ *
+ * woff2 first: smallest, and the renderer is Chrome, so support is a given.
+ *
+ * Supply the WEIGHT you want in the file itself (a Bold file if you want
+ * bold). The face is registered across the full weight range, so the browser
+ * uses this file as-is instead of smearing a synthetic bold over it.
+ */
+const FONT_FILENAMES = ['font.woff2', 'font.woff', 'font.ttf', 'font.otf'];
+
 const REQUIRED_MANIFEST_FIELDS = [
   'displayName',
   'badgeLabel',
@@ -124,9 +141,10 @@ async function resolveBrandFolder(brandDir, slug) {
   // Optional files are probed, never required: a missing one yields null and
   // the renderer falls back, rather than knocking the whole brand out of the
   // picker.
-  const [logoPath, hookBgPath] = await Promise.all([
+  const [logoPath, hookBgPath, fontPath] = await Promise.all([
     firstReadable(brandDir, slug, LOGO_FILENAMES),
     firstReadable(brandDir, slug, HOOK_BG_FILENAMES),
+    firstReadable(brandDir, slug, FONT_FILENAMES),
   ]);
 
   return {
@@ -139,6 +157,7 @@ async function resolveBrandFolder(brandDir, slug) {
     headlineStroke: manifest.headlineStroke,
     hookBgPath,
     logoPath,
+    fontPath,
     caption,
   };
 }

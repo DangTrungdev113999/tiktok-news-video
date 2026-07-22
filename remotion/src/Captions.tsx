@@ -35,6 +35,8 @@ export interface CaptionsProps {
    * spec with no hook scene carries no brandKit at all.
    */
   caption?: CaptionOverrides | null;
+  /** Resolved by MainVideo so every text overlay shares one family. */
+  fontFamily?: string;
 }
 
 function findActiveLine(lines: CaptionLine[], frame: number): CaptionLine | null {
@@ -46,7 +48,7 @@ function findActiveLine(lines: CaptionLine[], frame: number): CaptionLine | null
   return null;
 }
 
-export const Captions: React.FC<CaptionsProps> = ({ lines, caption }) => {
+export const Captions: React.FC<CaptionsProps> = ({ lines, caption, fontFamily }) => {
   const frame = useCurrentFrame();
   // House defaults with this brand's overrides on top. Positions arrived
   // already clamped to TikTok's safe zone (build-spec.mjs does that, and
@@ -78,7 +80,7 @@ export const Captions: React.FC<CaptionsProps> = ({ lines, caption }) => {
   };
 
   const wordBaseStyle: CSSProperties = {
-    fontFamily: BRAND_FONT_FAMILY,
+    fontFamily: fontFamily ?? BRAND_FONT_FAMILY,
     fontWeight: 700,
     fontSize: c.fontSize,
     lineHeight: c.lineHeight,

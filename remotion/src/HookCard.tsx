@@ -40,6 +40,8 @@ import { BADGE, BRAND_FONT_FAMILY, HEADLINE, fitHeadlineFontSize } from "./layou
 export interface HookCardProps {
   headline: string;
   brandKit: BrandKit;
+  /** Resolved by MainVideo so every text overlay shares one family. */
+  fontFamily?: string;
 }
 
 // Tinted region ~ bottom half of the frame: fully transparent through 44%,
@@ -51,7 +53,7 @@ const bgMaskStyle: CSSProperties = {
     "linear-gradient(to bottom, transparent 0%, transparent 44%, rgba(0,0,0,0.4) 52%, black 60%, black 100%)",
 };
 
-export const HookCard: React.FC<HookCardProps> = ({ headline, brandKit }) => {
+export const HookCard: React.FC<HookCardProps> = ({ headline, brandKit, fontFamily }) => {
   // Long headlines step down a size rather than growing another line into
   // the badge above them -- see fitHeadlineFontSize.
   const headlineFontSize = fitHeadlineFontSize(headline);
@@ -88,7 +90,7 @@ export const HookCard: React.FC<HookCardProps> = ({ headline, brandKit }) => {
     alignItems: "center",
     justifyContent: "center",
     flexShrink: 0,
-    fontFamily: BRAND_FONT_FAMILY,
+    fontFamily: fontFamily ?? BRAND_FONT_FAMILY,
     fontWeight: 700,
     fontSize: Math.round(BADGE.iconSize * 0.56),
     lineHeight: 1,
@@ -96,7 +98,7 @@ export const HookCard: React.FC<HookCardProps> = ({ headline, brandKit }) => {
   };
 
   const badgeLabelStyle: CSSProperties = {
-    fontFamily: BRAND_FONT_FAMILY,
+    fontFamily: fontFamily ?? BRAND_FONT_FAMILY,
     fontWeight: 700,
     fontSize: BADGE.fontSize,
     letterSpacing: BADGE.letterSpacing,
@@ -113,7 +115,7 @@ export const HookCard: React.FC<HookCardProps> = ({ headline, brandKit }) => {
     bottom: HEADLINE.bottomInset,
     left: HEADLINE.left,
     right: HEADLINE.rightInset,
-    fontFamily: BRAND_FONT_FAMILY,
+    fontFamily: fontFamily ?? BRAND_FONT_FAMILY,
     fontWeight: 700,
     fontSize: headlineFontSize,
     lineHeight: HEADLINE.lineHeight,

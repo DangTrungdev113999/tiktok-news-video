@@ -35,9 +35,10 @@ as a folder to drop in — there is no registration command. See
 
 ```
 brand/<slug>/
-├── brand.json      REQUIRED — badge text + color palette
+├── brand.json      REQUIRED — badge text, colors, caption geometry
 ├── hook-bg.*       optional — hook scene background
-└── logo.*          optional — the badge mark
+├── logo.*          optional — the badge mark
+└── font.*          optional — the channel's typeface
 ```
 
 **`brand.json` is the only required file.** A brand folder containing nothing
@@ -48,8 +49,19 @@ else is valid and renders.
   copyright channel or not.
 - `hook-bg.svg` / `.png` / `.jpg` / `.jpeg` / `.webp` backs the hook scene.
   Without it the card is filled from `badgeGradient`.
+- `font.woff2` / `.woff` / `.ttf` / `.otf` is the channel's typeface. It
+  applies to the headline, the badge label **and** the karaoke captions at
+  once — never to one of them. Without it everything uses house Oswald 700.
 
-`.svg` wins when several extensions are present.
+`.svg` wins when several extensions are present; `.woff2` likewise for fonts.
+
+Put the WEIGHT you want in the font file (supply a Bold file if you want
+bold). The face is registered across the full weight range, so Chrome uses the
+file as-is instead of smearing a synthetic bold over an already-bold face.
+
+A font that fails to load **stops the render** with the path named. It does
+not fall back — a video silently shipped in the wrong typeface is worse than
+one that didn't render.
 
 Because `--public-dir` is the workspace, anything in the brand folder is
 already reachable via `staticFile()`. That is why a logo can be **SVG**: the
@@ -119,15 +131,9 @@ the problem in the rendered MP4, only on the platform, after posting.
 
 ## Brand scope limits
 
-Today brands vary by **color, badge text, badge mark, hook background, and
-karaoke geometry**. Still house-wide in `remotion/src/layout.ts`: the font
-family and every hook-card position — see `text-layout.md`.
-
-The font family is deliberately not per-brand *yet*. `layout.ts` exists so the
-hook headline and the captions can never load different families again, so a
-per-brand font has to move the headline, badge, and captions together, and
-needs a font-loading gate (a frame rendered before the font arrives shows the
-fallback). That is its own slice.
+Today brands vary by **color, badge text, badge mark, hook background, karaoke
+geometry, and typeface**. Still house-wide in `remotion/src/layout.ts`: every
+hook-card position — see `text-layout.md`.
 
 The set is meant to grow, but one key at a time, each with a stated default. A
 brand key that lands without a default is a bug: it breaks every folder
