@@ -39,7 +39,8 @@ export interface CaptionsProps {
   fontFamily?: string;
 }
 
-function findActiveLine(lines: CaptionLine[], frame: number): CaptionLine | null {
+/** Shared by PopupCaptions.tsx too -- the "which group is on screen now" scan doesn't care which style renders it. */
+export function findActiveLine(lines: CaptionLine[], frame: number): CaptionLine | null {
   // Lines are built in ascending, non-overlapping frame order -- a linear
   // scan is plenty fast at the per-video line counts this plugin produces.
   for (const line of lines) {

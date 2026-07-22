@@ -57,8 +57,13 @@ run asks again.
 
 Everything else has a default the author picked by measuring, so asking would
 only make a non-technical user guess at a decision whose right answer is always
-the default: the voice (`pGapy9MNHCukzJtjavF0` — Hạnh, chosen after auditioning
-14 Vietnamese voices on one script) and the pace (`4x` = atempo 1.40).
+the default: the workspace folder and the pace (`4x` = atempo 1.40).
+
+**Init does not ask about the voice at all, and does not set one.** The voice
+is picked per video from `<workspace>/voices.json` — see Step 1b of the main
+skill's `narration-and-bgm.md`. It was a setting here once; that put the
+decision furthest from the moment it matters, and forced every channel one
+person runs to sound the same.
 
 Re-running init on an already-configured machine asks **nothing at all** — it
 prints what's saved and exits. That is the common case, because every plugin
@@ -68,11 +73,11 @@ The key is the one value no default can supply: it's per-person, secret, and
 billed per character. Never share one key between employees.
 
 **To change the defaults**, run `npm run init -- --nang-cao` (or `--advanced`).
-That restores the full four-question flow. In that mode Enter *keeps* the saved
-key and voice rather than clearing them.
+That reopens the workspace folder, the API key and the pace. In that mode Enter
+*keeps* the saved key rather than clearing it.
 
-For a single video, don't re-run init at all — `synthesizeScript` takes
-`voiceId` / `paceLabel` overrides that never touch the saved config.
+For a single video, don't re-run init at all — `synthesizeScript` takes a
+`paceLabel` override that never touches the saved config.
 
 The pace levels are `none / 2x / 3x / 4x / 5x`, and the labels are notch names,
 not multipliers — `5x` is 1.5×. `references/narration-pace.md` in the main

@@ -16,7 +16,7 @@ Apply the classification table in `knowledge/effect-catalog.md` exactly:
 |---|---|
 | landscape image (`w/h >= 1.2`) | **pan** — real Ken-Burns traversal |
 | portrait image (`h/w >= 1.2`) | **zoom** — push/pull alternating |
-| square-ish image (`0.83 <= w/h < 1.2`) | **diagonal** / **rotate**, alternating |
+| square-ish image (`0.83 <= w/h < 1.2`) | **diagonal**, drift direction alternating L↔R |
 | any video | **passthrough** — native playback, no synthetic motion |
 
 Plus a `contain-blur-pad` fit override when cropping would lose too much (see
@@ -45,6 +45,63 @@ Invariants every tag holds:
 - **Overrides feed `classifyAsset`, not `Scene.tsx`.** The Remotion side stays
   one parametric component; an override changes which parameters it receives,
   never adds a bespoke code path.
+
+## Step 1c — suggest tags for the images left untagged (a user pause)
+
+The automatic classification always produces a working video, but a whole
+script of bare filenames leans on just three defaults (pan / zoom / diagonal),
+so a long run can read **flat** — the author's complaint that a video "bị nhạt
+mắt". This step offers to enrich it, once, before the paid TTS call.
+
+**When it fires:** only when **at least one image carries no tag at all**. It is
+a conditional stop (contract #3 / Step 1c). If every image is already tagged, or
+the screens hold only videos, say nothing and move on.
+
+**What it touches:** only the **untagged images**.
+
+- An image with **any** tag is the author's own choice — leave it exactly as
+  written, never re-suggest for it. "Có tag thì để yên."
+- **Videos are skipped** — they are `passthrough`, there is no motion to add.
+- `focus_object` is **never suggested**: it needs to know what is *in* the
+  picture, which a size-based suggestion cannot see. Suggest only the geometric
+  tags (`slide_*`, `zoom_in`/`zoom_out`, `flip_book`, `fill_full_screen`).
+
+**How to suggest — beat the default, don't reproduce it.** First
+`probe-asset.mjs` every untagged image for its pixel `w`/`h`. The suggestion
+must be a move the aspect-ratio default would *not* already make — otherwise
+accepting it changes nothing. Aim for compound moves (different slots multiply)
+and vary across the run so no two consecutive shots read alike:
+
+| Untagged image | Default it would get | Suggest instead (livelier) |
+|---|---|---|
+| landscape (`w/h ≥ 1.2`) | pan | `fill_full_screen \| slide_left_right`, alternating `slide_right_left` — a full-bleed sweep with no blur bands |
+| portrait (`h/w ≥ 1.2`) | zoom push/pull | `zoom_in \| slide_top_bottom` — push in while drifting down the tall frame; alternate `zoom_in`/`zoom_out` |
+| square-ish (`0.83–1.2`) | diagonal | `zoom_in`, every other one `flip_book \| zoom_in` for rhythm |
+
+Two guards on top of the table:
+
+- **Resolution, not just ratio.** The probe gives pixel size — use it. On a
+  **low-resolution** image a `zoom_in` or a `fill_full_screen` magnifies and
+  crops into compression artefacts. There, drop the crop/push: prefer a
+  `zoom_out` (pulling back shows less of the mush) or a plain `slide_*` over the
+  blur-pad instead of a full-bleed one.
+- **Anti-repetition.** Never propose the same top move on two untagged images in
+  a row; alternate directions and zoom variants across the sequence. Sameness is
+  the exact thing this step exists to break.
+
+**Ask once, showing the concrete per-image suggestions**, not a blind yes/no —
+the user is approving specific moves (e.g. "anh_1 → full-bleed sweep, anh_3 →
+push-in + page turn"). Two options:
+
+- **Áp dụng gợi ý** → write each accepted tag onto its script line and proceed.
+  Applied tags flow through the ordinary `parse-tags.mjs` → `classifyAsset`
+  path; nothing bespoke is added to the render.
+- **None** → inject nothing. The run proceeds with today's automatic
+  classification, unchanged. Declining costs the author nothing.
+
+The invariant still holds: a tag only ever *adds* intent. This step never makes
+one a prerequisite — it just stops guessing that bare filenames mean the author
+wanted the plainest possible motion.
 
 ## House rule — one parametric component
 
@@ -96,4 +153,4 @@ picture physically in the layout. That is `PanMedia` and `SlideMedia`.
 
 The test for whether a future effect needs the same treatment: **does it move
 the frame far enough to leave what a frame-sized element holds?** Pure scale
-(`zoom`) and small drifts (`diagonal`, `rotate`) do not. A traverse does.
+(`zoom`) and small drifts (`diagonal`) do not. A traverse does.

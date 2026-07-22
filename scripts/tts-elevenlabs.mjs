@@ -22,6 +22,7 @@ import { pathToFileURL } from 'node:url';
 import { CONFIG_DIR, readConfig } from './workspace.mjs';
 import { binaryPath, missingMessage } from './ffmpeg-path.mjs';
 import { paceLevel, DEFAULT_PACE_LABEL, stretchAudio, rescaleTimeline } from './narration-pace.mjs';
+import { HOUSE_VOICE } from './voice-library.mjs';
 
 // NOTE (checked again 2026-07-17 via ElevenLabs docs + web search): the
 // `/with-timestamps` endpoint's documented OpenAPI schema only enumerates
@@ -306,7 +307,17 @@ export async function synthesizeScript(scenes, opts = {}) {
 
   const env = await readEnvFile();
   const apiKey = opts.apiKey ?? env.ELEVENLABS_API_KEY ?? '';
-  const voiceId = opts.voiceId ?? env.ELEVENLABS_VOICE_ID ?? 'FHhpndubmejSghqiumSv';
+  // The voice is CHOSEN PER VIDEO now (voice-library.mjs), so opts.voiceId is
+  // the real answer and everything after it is a safety net. env is still read
+  // for installs that predate the library and have not run a video since.
+  //
+  // The net ends at HOUSE_VOICE and not at a bare literal on purpose. It used
+  // to end at 'FHhpndubmejSghqiumSv' -- "thu-le-vn", described by its own
+  // publisher as a Vietnamese voice cloned for cross-lingual INDONESIAN TTS.
+  // Nobody ever chose it; it was reachable only by falling all the way through
+  // this chain, which is exactly how a wrong voice ships unnoticed.
+  const voiceSource = opts.voiceId ? 'tham số' : env.ELEVENLABS_VOICE_ID ? 'cấu hình cũ' : 'mặc định';
+  const voiceId = opts.voiceId ?? env.ELEVENLABS_VOICE_ID ?? HOUSE_VOICE.id;
   const useMock = Boolean(opts.mock) || !apiKey;
 
   if (useMock) {
@@ -318,7 +329,9 @@ export async function synthesizeScript(scenes, opts = {}) {
     return { audioPath: outAudioPath, timings, words: scenes.map(() => []), mode: 'mock' };
   }
 
-  console.log(`[tts-elevenlabs] LIVE MODE — calling ElevenLabs voice_id=${voiceId}, model=${MODEL_ID}`);
+  console.log(
+    `[tts-elevenlabs] LIVE MODE — calling ElevenLabs voice_id=${voiceId} (${voiceSource}), model=${MODEL_ID}`
+  );
 
   const { full, offsets } = buildConcatenatedScript(scenes);
   const response = await callElevenLabsWithTimestamps({ text: full, voiceId, apiKey });

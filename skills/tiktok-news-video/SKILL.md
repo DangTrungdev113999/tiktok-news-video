@@ -1,7 +1,7 @@
 ---
 name: tiktok-news-video
 user-invocable: true
-description: "TikTok News Video pipeline. From images/videos + a scene script pasted in chat: take the user's scene text VERBATIM as the narration (no rewriting) -> resolve narration (user MP3 + forced alignment, or ElevenLabs v3 TTS with built-in timestamps) -> resolve BGM (saved library or new upload) -> resolve which brand kit to use (auto if only one exists) -> classify each asset's motion by aspect ratio (pan/zoom/diagonal/passthrough + blur-pad for non-filling assets) -> render END-TO-END to a finished MP4 via Remotion. BGM choice always asks the user; brand choice only asks when 2+ brand folders exist; everything else is automatic, including bug fixing."
+description: "TikTok News Video pipeline. From images/videos + a scene script pasted in chat: take the user's scene text VERBATIM as the narration (no rewriting) -> resolve narration (user MP3 + forced alignment, or ElevenLabs v3 TTS with built-in timestamps) -> resolve BGM (saved library or new upload) -> resolve karaoke caption style (cumulative sentence highlight, or popup 2-3 word groups) -> for any image left untagged, suggest livelier effect tags from its size and ask to auto-fill them or leave them automatic -> resolve which brand kit to use (auto if only one exists) -> classify each asset's motion by aspect ratio (pan/zoom/diagonal/passthrough + blur-pad for non-filling assets) -> render END-TO-END to a finished MP4 via Remotion. the source folder, BGM and karaoke style are always confirmed with the user; the effect-tag suggestion asks only when an image has no tag; brand choice only asks when 2+ brand folders exist; everything else is automatic, including bug fixing."
 argument-hint: "<scene script pasted in chat>"
 ---
 
@@ -19,7 +19,7 @@ one for the step you're on rather than reading them all up front.
 | `references/paths-and-config.md` | CODE vs WORKSPACE dirs, config file, where the house rules live |
 | `references/script-input.md` | Step 1: parse the scene script (used verbatim) |
 | `references/asset-naming.md` | How `anh_1` / `ảnh 1` resolves to a real file |
-| `references/narration-and-bgm.md` | Steps 2–3: TTS or forced alignment, BGM choice |
+| `references/narration-and-bgm.md` | Steps 1b–3: pick the voice, TTS or forced alignment, BGM choice |
 | `references/narration-pace.md` | Why the read gets sped up after synthesis, and by how much |
 | `references/motion.md` | Which movement each asset gets, and per-asset overrides |
 | `references/tags/README.md` | The tag grammar; one file per tag key, opened on demand |
@@ -47,7 +47,7 @@ So, before Step 1:
   - **`$CODE_ROOT/remotion/node_modules/@remotion/cli/` missing** → the render
     engine is not installed *for this copy of the plugin*. Hand off to init
     too, and tell the user to answer **N** when it asks whether to
-    reconfigure — their key, voice and pace are kept.
+    reconfigure — their key and pace are kept.
 
   The second is the common case and the config check cannot see it. Config
   lives in the home folder and survives forever; `node_modules` (~600MB) and
@@ -60,20 +60,30 @@ So, before Step 1:
   referencing assets by the names already in `assets/`. Don't invent one.
 - **Ask once whether they have a ready MP3 narration**, or whether TTS should
   generate it. Step 2 needs the answer either way.
-- **Where is this episode's material?** The employee prepares a folder
-  anywhere (Desktop, Downloads, a USB stick) and hands you its path — dragging
-  the folder into the chat box produces one. Run `/clean-source` on it before
-  you start: it **copies** the folder into `$WORKSPACE_DIR/assets/` and renames
-  the copy to `anh_1` / `video_2`, and makes the `_des` marker copies the tags
-  rely on. Never ask them to move files there themselves — the whole point is
-  that the location is the pipeline's problem, not theirs. See
-  `asset-naming.md`.
-- **Offer the voice and pace only if the user brings them up.** Both live in
-  `$CONFIG_FILE` (`voiceId`, `narrationPace`) and hold across runs. A user who
-  says "đọc nhanh hơn" or names a different voice for THIS video gets it via
-  `synthesizeScript`'s `voiceId` / `paceLabel` options — a per-run override
-  that does not touch their saved defaults. Don't raise it unprompted; it is
-  settled configuration, not a decision the pipeline needs made.
+- **Where is this episode's material? — always confirm it, never assume
+  (Stop 2).** The employee prepares a folder anywhere (Desktop, Downloads, a
+  USB stick) and hands you its path — dragging the folder into the chat box
+  produces one. Run `/clean-source` on it before you start: it **copies** the
+  folder into `$WORKSPACE_DIR/assets/` and renames the copy to `anh_1` /
+  `video_2`, and makes the `_des` marker copies the tags rely on. Never ask
+  them to move files there themselves — the whole point is that the location is
+  the pipeline's problem, not theirs. See `asset-naming.md`.
+  - **If `$WORKSPACE_DIR/assets/` already holds files from a previous run, do
+    NOT silently reuse them.** Ask whether to keep those or replace them with a
+    new folder — a re-run is the exact case where the last episode's images are
+    still sitting there and quietly become this episode's. That silent reuse is
+    why this is a mandatory stop, not a default.
+  - On a genuinely fresh run the folder just handed in IS the answer; confirm
+    that one and move on. With nothing at all, ask for the folder. One stop,
+    content adapted to which of the three situations you're in.
+- **The voice is asked EVERY run, on the TTS path** — see "Step 1b — Voice" in
+  `narration-and-bgm.md`. Ask it BEFORE Step 2, which is the paid call. It is no longer a setting; init does not ask for it
+  and `$CONFIG_FILE` no longer records one. Skip the question entirely when the
+  user supplied their own MP3: that run synthesizes nothing.
+- **The pace is still settled configuration.** `narrationPace` lives in
+  `$CONFIG_FILE` and holds across runs; don't raise it unprompted. A user who
+  says "đọc nhanh hơn" gets `synthesizeScript`'s `paceLabel` for THIS video
+  only, without touching their saved default.
 
 ### Everything that can stop the run, checked BEFORE the paid call
 
@@ -99,15 +109,19 @@ prove one exists.
   tighten, or re-order it. There is no house-style pass and no script-review
   pause — both were deleted 2026-07-20. Only `ttsText` (audio-tag markup) is
   yours to compose, and it changes delivery, never wording.
-- **You stop for the user in exactly FOUR places, and no others.** Three are
-  unconditional, one fires only sometimes:
+- **You stop for the user in exactly EIGHT places, and no others.** Four are
+  unconditional, four are conditional:
 
   | # | Stop | When |
   |---|---|---|
   | 1 | Paste the scene script | only if `$ARGUMENTS` is empty |
-  | 2 | Ready MP3, or shall TTS read it? | always, once, before Step 2 |
-  | 3 | Which BGM (Step 3) | always |
-  | 4 | Which brand kit | **only when 2+ valid kits exist** — silent with one, hard error with zero |
+  | 2 | Confirm this episode's material | **always** — reuse-or-replace when assets already sit in `assets/`, confirm the folder just handed in, or ask for one |
+  | 3 | Suggest effect tags for untagged images (Step 1c) | **only when ≥1 image carries no tag** — silent when every image is already tagged, or there are none |
+  | 4 | Ready MP3, or shall TTS read it? | always, once, before Step 2 |
+  | 5 | Which voice (Step 1b) | **TTS path only** — skipped when the user brought an MP3 |
+  | 6 | Which BGM (Step 3) | always |
+  | 7 | Which karaoke caption style (Step 3b) | always |
+  | 8 | Which brand kit | **only when 2+ valid kits exist** — silent with one, hard error with zero |
 
   Everything else — asset classification, effect selection, TTS/alignment,
   rendering, retrying a failed render — is automatic. Don't ask permission for
@@ -116,10 +130,15 @@ prove one exists.
   (This list used to read "exactly ONE place: the BGM choice" while the same
   file told you to ask two other questions. An agent trusting the contract
   over the prose would silently skip the MP3 question and synthesise narration
-  the user already had.)
+  the user already had. So: adding a pause anywhere means editing THIS table in
+  the same commit. The voice stop was added 2026-07-22; the material stop was
+  made explicit the same day, after a run silently reused the previous
+  episode's `assets/` folder without asking; the effect-tag suggestion (Step 1c)
+  was added 2026-07-22 so a script of bare filenames doesn't ship a video that
+  reads flat.)
 - **An unimplemented tag key stops the run.** `tags/README.md` lists what
   exists; a key outside it is reported and the run halts until the user says
-  what they meant. This is a fifth stop, but a rare and unwelcome one — it
+  what they meant. This is another stop, but a rare and unwelcome one — it
   means the script asked for something the pipeline cannot do, and guessing
   would ship a video missing the effect the author asked for. Do NOT treat it
   as a warning to note at Step 6.
@@ -150,8 +169,11 @@ WORKSPACE_DIR wrongly silently destroys the user's data on the next update.
 | # | Step | Stops? | Detail |
 |---|---|---|---|
 | 1 | Parse the script; verify every asset, every tag key, and that ≥1 brand kit exists | on failure | `script-input.md`, `tags/README.md`, `hook-and-brand.md` |
+| 1b | Pick the narration voice (TTS path only) | **yes** | `narration-and-bgm.md` |
+| 1c | Suggest effect tags for images left untagged (probe sizes, propose livelier moves) | only if ≥1 untagged image | `motion.md` |
 | 2 | Resolve narration audio + word timing — **the paid step** | — | `narration-and-bgm.md`, `narration-pace.md` |
 | 3 | Resolve BGM | **yes** | `narration-and-bgm.md` |
+| 3b | Pick the karaoke caption style | **yes** | `narration-and-bgm.md` |
 | 4 | Classify motion, mark the hook screen, pick the brand, build `spec.json` | only if 2+ brands | `motion.md`, `hook-and-brand.md`, `build-and-render.md` |
 | 4b | `verify-captions.mjs` — the karaoke says what the author wrote | on failure | `build-and-render.md` |
 | 5 | Render | — | `build-and-render.md` |
@@ -165,9 +187,11 @@ Step 2 is where the user's money goes.
 
 These are settled decisions. Don't reopen them mid-run:
 
-- **No second caption style** and no per-word styling variety — the single
-  `Captions.tsx` look is the whole spec. Captions cover every scene except the
-  hook scene.
+- **Exactly two caption styles, chosen once per video at Step 3b** —
+  `cumulative` (`Captions.tsx`) and `popup` (`PopupCaptions.tsx`). Don't add a
+  third or per-word styling variety without a real request; see
+  `text-layout.md`. Captions cover every scene except the hook scene, in
+  either style.
 - **No script rewriting.** The user's text is spoken as typed.
 - **No BGM ducking** — constant 25% is the whole spec.
 - **No host-app chrome** baked into the hook card (search bars, play buttons,

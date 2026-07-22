@@ -55,9 +55,17 @@ export function verifyCaptions(spec, sceneTexts, { hookScreenIndex = 0 } = {}) {
     (group.words ?? []).flatMap((w) => normalize(w.text))
   );
 
+  // Which script screens to leave out of the comparison: the hook, plus any
+  // screen the hook was held over (those show the hook headline, not captions).
+  // build-spec.mjs records them on the spec; fall back to just the hook screen
+  // for specs written before that field existed.
+  const skip = new Set(
+    Array.isArray(spec.captionSkipScreens) ? spec.captionSkipScreens : [hookScreenIndex]
+  );
+
   const scriptWords = sceneTexts
     .map((s, i) => ({ text: typeof s === 'string' ? s : s.text ?? '', i }))
-    .filter(({ i }) => i !== hookScreenIndex)
+    .filter(({ i }) => !skip.has(i))
     .flatMap(({ text }) => normalize(text));
 
   const diffs = [];

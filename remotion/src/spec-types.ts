@@ -15,7 +15,7 @@ import type { CaptionOverrides } from "./layout";
 
 export type AssetType = "image" | "video";
 
-export type Effect = "pan" | "zoom" | "diagonal" | "rotate" | "passthrough" | "slide";
+export type Effect = "pan" | "zoom" | "diagonal" | "passthrough" | "slide";
 
 /**
  * A `slide_left_right` / `slide_right_left` traverse across the picture,
@@ -138,7 +138,7 @@ export interface SceneSpec {
   assetPath: string;
   assetType: AssetType;
   effect: Effect;
-  /** Required for pan/diagonal/rotate (drift/spin direction). Ignored for zoom/passthrough. */
+  /** Required for pan/diagonal (drift direction). Ignored for zoom/passthrough. */
   direction?: Direction;
   /** Only meaningful for effect "zoom" -- push/pull alternation. Defaults to "in". */
   zoomVariant?: ZoomVariant;
@@ -195,6 +195,16 @@ export interface SceneSpec {
   isHook?: boolean;
   /** Headline text shown by the hook-card overlay. Only used when isHook is true. */
   hookHeadline?: string;
+  /**
+   * The hook is HELD over this (non-hook) scene: the branded hook card stays
+   * pinned in the bottom half while this scene's image is fitted into the top
+   * half, and the scene's karaoke captions are suppressed. Used to keep the
+   * hook visible from the hook line through to the end of the screen that
+   * follows it. `hookHeadline` is copied onto these scenes too so the pinned
+   * card can render the same headline. Off by default -- an ordinary scene
+   * fills the whole frame and shows captions as usual.
+   */
+  heldHook?: boolean;
 }
 
 /** One karaoke-caption word, timed in absolute composition frames (not scene-local). */
@@ -256,6 +266,11 @@ export interface BrandKit {
   headlineShadow: [string, string, string];
   /** The headline's WebkitTextStroke color. */
   headlineStroke: string;
+  /**
+   * Whether this channel dates its posts. Read by scripts/build-spec.mjs to
+   * decide whether to stamp `hookDate` -- the renderer never sees it.
+   */
+  hookDate?: boolean;
 }
 
 export interface VideoSpec {
@@ -271,8 +286,32 @@ export interface VideoSpec {
   scenes: SceneSpec[];
   /** Karaoke caption lines, flattened across all non-hook scenes, absolute-frame timed. */
   captions?: CaptionLine[];
+  /**
+   * Which karaoke look to render `captions` with. "cumulative" (default,
+   * used when absent so specs from before this field existed still render
+   * exactly as they used to): a whole sentence-ish group on screen at once,
+   * words turning gold and staying gold as they're spoken. "popup": small
+   * 2-3 word groups, only the currently-spoken word highlighted, chosen once
+   * per video (see MainVideo.tsx / PopupCaptions.tsx).
+   */
+  captionStyle?: "cumulative" | "popup";
+  /**
+   * SCREEN indices (author's screen order, not shot order) that carry no
+   * karaoke captions: the hook screen and any screen the hook is held over.
+   * The renderer ignores this; it exists so verify-captions.mjs excludes the
+   * same screens from the script side when comparing captions to the author's
+   * text. Absent on older specs, where only the hook (index 0) is skipped.
+   */
+  captionSkipScreens?: number[];
   /** Present only when a scene has isHook: true. */
   brandKit?: BrandKit;
+  /**
+   * Publish date for the hook card's date plate, e.g. "22/07/2026", already
+   * formatted by scripts/build-spec.mjs. Present only when the chosen brand
+   * opted in with `"hookDate": true` -- absent is the normal case, and then
+   * the card has no plate at all.
+   */
+  hookDate?: string;
   // Index signature: Remotion's <Composition> constrains props to
   // Record<string, unknown>; every field above is still concretely typed
   // for consumers, this only satisfies that generic constraint.

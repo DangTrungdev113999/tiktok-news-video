@@ -60,6 +60,7 @@ Call `buildSpecToFile` from `scripts/build-spec.mjs` with:
 | `scenes[].isHook` / `hookHeadline` | on the hook scene only |
 | `brandKit` | the resolved brand object (see `hook-and-brand.md`) |
 | `narrationAudioPath` / `bgmAudioPath` | relative to `workspaceDir` |
+| `captionStyle` | `"cumulative"` or `"popup"` — the Step 3b answer (`narration-and-bgm.md`). Omit to default to `"cumulative"`. |
 
 A screen holding several assets is passed as
 `assets: [{filename, share}]` instead of `assetFilename` — see
@@ -196,9 +197,11 @@ Tell the user:
   (`$WORKSPACE_DIR/output/<dated-slug>/final.mp4`)
 - the video's duration
 - a one-line summary of what effects / BGM / brand were used, plus the **voice
-  and the pace level** (`config.local.json`'s `voiceId` + `narrationPace`, or
-  whatever was overridden for this run) — the pace changes how the whole video
-  feels and the user cannot tell 1.3× from 1.4× by reading a filename
+  and the pace level** — name the voice by its description from
+  `voices.json`, not by its id, and give `narrationPace` from
+  `config.local.json` (or whatever was overridden for this run). The pace
+  changes how the whole video feels and the user cannot tell 1.3× from 1.4×
+  by reading a filename
 - **every entry in `spec.warnings`**, plus what you resolved each
   `focus_object` to (which person, which coordinates, which cue word) — the
   author is the only one who can catch a misidentification

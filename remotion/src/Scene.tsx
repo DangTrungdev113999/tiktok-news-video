@@ -112,13 +112,6 @@ const DIAGONAL_DRIFT_X_PCT = 0.05; // +/-5% of frame width
 const DIAGONAL_DRIFT_Y_PCT = 0.05; // +/-5% of frame height
 const DIAGONAL_ZOOM_END = 1.08;
 
-// Rotating a cover-filled frame exposes corners unless the zoom compensates.
-// For a w x h frame rotated by theta, the minimum safe scale is
-// cos(theta) + (h/w)*sin(theta) (derived for the 1080x1920 frame: ~1.092 at
-// 3deg). 1.15 leaves a real margin over that.
-const ROTATE_DEG = 3; // 0 -> +/-3 degrees (monotonic, not oscillating -- see below)
-const ROTATE_ZOOM_END = 1.15;
-
 const BLUR_PAD_BACKDROP_SCALE = 1.3;
 const BLUR_PAD_BLUR_PX = 40;
 
@@ -421,19 +414,6 @@ function computeTransform(
     return `translate(${x}px, ${y}px) scale(${scale})`;
   }
 
-  if (effect === "rotate") {
-    // Monotonic 0 -> +/-ROTATE_DEG together with 1 -> ROTATE_ZOOM_END (NOT
-    // an oscillating +/- like pan/diagonal): the zoom must already be large
-    // enough to cover the frame at whatever angle is reached so far, and
-    // that only holds if both start together at (0deg, scale 1) and grow
-    // in lockstep -- see the ROTATE_ZOOM_END derivation above.
-    const scale = interpolate(frame, [0, endFrame], [1, ROTATE_ZOOM_END], clamp);
-    const deg = interpolate(frame, [0, endFrame], [0, sign * ROTATE_DEG], clamp);
-    // Scale first, then rotate (CSS applies right-to-left) -- matches the
-    // geometry the ROTATE_ZOOM_END safety margin was derived against.
-    return `rotate(${deg}deg) scale(${scale})`;
-  }
-
   // passthrough: native playback, no synthetic motion added.
   return "none";
 }
@@ -459,7 +439,7 @@ const FULL_BLEED_STYLE: CSSProperties = {
  * by the overflow a GIVEN SCALE creates on a 100%-sized element -- at
  * PAN_ZOOM_END=1.08 that's only ~3.4% of frame width, regardless of how wide
  * the source image actually is. That's the right clamp for square-ish
- * diagonal/rotate, where real cover overflow genuinely is near-zero -- but
+ * diagonal, where real cover overflow genuinely is near-zero -- but
  * for a landscape photo with ~68% real crop overflow, it left almost all of
  * that overflow unused. Sizing the element at its own true cover scale up
  * front removes that mismatch entirely.)
@@ -788,7 +768,7 @@ const ContainBlurPad: React.FC<{
   const isVideo = assetType === "video";
 
   // The blur layer zooms WITH a zoom_in/zoom_out (but not with anything else:
-  // pan/diagonal/rotate drift the picture over a backdrop that stays put, and
+  // pan/diagonal drift the picture over a backdrop that stays put, and
   // an aimed focus push deliberately leaves it alone too).
   const backdropZoom =
     effect === "zoom" && !(focus && focus.length > 0)
