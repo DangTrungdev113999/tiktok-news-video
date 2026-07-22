@@ -19,6 +19,12 @@ import { BADGE, BRAND_FONT_FAMILY, HEADLINE, fitHeadlineFontSize } from "./layou
  * of the asset's own baked-in cream->orange gradient, is what makes the card
  * bloom out of the photo instead of meeting it at a hard rectangle edge.
  *
+ * It is OPTIONAL. A brand folder with no hook-bg file gets the same masked
+ * card filled from `badgeGradient` instead. The file used to be required,
+ * which forced two assumptions on every channel that nobody had agreed to:
+ * that its cover is a photograph, and that a hook-screen asset is a
+ * precondition for the brand existing at all.
+ *
  * The brand badge is coded here rather than compositing a flat logo image --
  * a flush-left ribbon (flat left edge, rounded right end) reads more
  * intentional than a floating pill. Badge text and every color below come
@@ -125,16 +131,30 @@ export const HookCard: React.FC<HookCardProps> = ({ headline, brandKit }) => {
 
   return (
     <AbsoluteFill>
-      <Img
-        src={staticFile(brandKit.hookBgPath)}
-        style={{
-          position: "absolute",
-          inset: 0,
-          width: "100%",
-          height: "100%",
-          ...bgMaskStyle,
-        }}
-      />
+      {brandKit.hookBgPath ? (
+        <Img
+          src={staticFile(brandKit.hookBgPath)}
+          style={{
+            position: "absolute",
+            inset: 0,
+            width: "100%",
+            height: "100%",
+            ...bgMaskStyle,
+          }}
+        />
+      ) : (
+        // No cover art in the brand folder: draw the card from the brand's own
+        // gradient. Same mask, so it blooms out of the photo the same way --
+        // what changes is only what fills the card, not where it sits.
+        <div
+          style={{
+            position: "absolute",
+            inset: 0,
+            background: `linear-gradient(to bottom, ${brandKit.badgeGradient[0]} 0%, ${brandKit.badgeGradient[1]} 100%)`,
+            ...bgMaskStyle,
+          }}
+        />
+      )}
       <div style={badgeStyle}>
         <div style={badgeIconStyle}>
           {brandKit.logoPath ? (

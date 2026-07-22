@@ -36,13 +36,20 @@ as a folder to drop in — there is no registration command. See
 ```
 brand/<slug>/
 ├── brand.json      REQUIRED — badge text + color palette
-├── hook-bg.jpg     REQUIRED — hook scene background
-└── logo.svg        optional — the badge mark
+├── hook-bg.*       optional — hook scene background
+└── logo.*          optional — the badge mark
 ```
 
-`logo.svg` (or `logo.png`; `.svg` wins when both exist) is drawn inside the
-badge's white disc. Without it the disc shows a `©` glyph — which every brand
-used to get unconditionally, copyright channel or not.
+**`brand.json` is the only required file.** A brand folder containing nothing
+else is valid and renders.
+
+- `logo.svg` / `logo.png` is drawn inside the badge's white disc. Without it
+  the disc shows a `©` glyph — which every brand used to get unconditionally,
+  copyright channel or not.
+- `hook-bg.svg` / `.png` / `.jpg` / `.jpeg` / `.webp` backs the hook scene.
+  Without it the card is filled from `badgeGradient`.
+
+`.svg` wins when several extensions are present.
 
 Because `--public-dir` is the workspace, anything in the brand folder is
 already reachable via `staticFile()`. That is why a logo can be **SVG**: the
@@ -77,7 +84,7 @@ Call `listBrands(workspaceDir)` from `scripts/brand-kit.mjs`, then:
    qua folder `abc/` vì thiếu `brand.json`"). Never silently drop a broken
    folder — the employee who copied it needs to know something's wrong.
 2. **Zero valid brands** → stop with a clear message telling the user to drop
-   a brand folder (with `hook-bg.jpg` + `brand.json`) into
+   a brand folder (at minimum a `brand.json`) into
    `$WORKSPACE_DIR/brand/<slug>/`. Do not render without one.
 3. **Exactly one valid brand** → use it automatically, no question asked. Note
    which brand was used in the Step 6 report.

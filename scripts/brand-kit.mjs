@@ -35,8 +35,25 @@ import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { getWorkspaceDir } from './workspace.mjs';
 
-const HOOK_BG_FILENAME = 'hook-bg.jpg';
 const MANIFEST_FILENAME = 'brand.json';
+
+/**
+ * Background for the hook scene. OPTIONAL, and .svg leads for the same reason
+ * it does for the logo: the renderer is Chrome.
+ *
+ * This used to be a required hook-bg.jpg, which quietly made two decisions no
+ * one had agreed to -- that every channel's cover is a photograph, and that a
+ * *hook-screen* asset is a precondition for the brand existing at all. A brand
+ * whose cover is drawn rather than photographed could not be created, and one
+ * that wants no cover art had to supply a file anyway.
+ */
+const HOOK_BG_FILENAMES = [
+  'hook-bg.svg',
+  'hook-bg.png',
+  'hook-bg.jpg',
+  'hook-bg.jpeg',
+  'hook-bg.webp',
+];
 
 /**
  * The channel's mark, drawn inside the badge disc. OPTIONAL, and .svg comes
@@ -65,13 +82,6 @@ const REQUIRED_MANIFEST_FIELDS = [
  * folder crash the whole scan.
  */
 async function resolveBrandFolder(brandDir, slug) {
-  const hookBgPath = path.join(brandDir, HOOK_BG_FILENAME);
-  try {
-    await access(hookBgPath, fsConstants.R_OK);
-  } catch {
-    throw new Error(`missing ${HOOK_BG_FILENAME}`);
-  }
-
   const manifestPath = path.join(brandDir, MANIFEST_FILENAME);
   let raw;
   try {
@@ -94,17 +104,11 @@ async function resolveBrandFolder(brandDir, slug) {
 
   // Optional files are probed, never required: a missing one yields null and
   // the renderer falls back, rather than knocking the whole brand out of the
-  // picker the way a missing hook-bg.jpg does.
-  let logoPath = null;
-  for (const filename of LOGO_FILENAMES) {
-    try {
-      await access(path.join(brandDir, filename), fsConstants.R_OK);
-      logoPath = path.posix.join('brand', slug, filename);
-      break;
-    } catch {
-      // not this one; try the next
-    }
-  }
+  // picker.
+  const [logoPath, hookBgPath] = await Promise.all([
+    firstReadable(brandDir, slug, LOGO_FILENAMES),
+    firstReadable(brandDir, slug, HOOK_BG_FILENAMES),
+  ]);
 
   return {
     slug,
@@ -114,9 +118,29 @@ async function resolveBrandFolder(brandDir, slug) {
     badgeShadow: manifest.badgeShadow,
     headlineShadow: manifest.headlineShadow,
     headlineStroke: manifest.headlineStroke,
-    hookBgPath: path.posix.join('brand', slug, HOOK_BG_FILENAME),
+    hookBgPath,
     logoPath,
   };
+}
+
+/**
+ * First readable candidate in `filenames`, as a workspace-relative POSIX path
+ * (what staticFile() wants), or null if none exist.
+ *
+ * POSIX join, not path.join: these strings end up in spec.json and are handed
+ * to staticFile(), which builds a URL. On Windows a backslash is a literal
+ * character there, not a separator, so the asset silently fails to load.
+ */
+async function firstReadable(brandDir, slug, filenames) {
+  for (const filename of filenames) {
+    try {
+      await access(path.join(brandDir, filename), fsConstants.R_OK);
+      return path.posix.join('brand', slug, filename);
+    } catch {
+      // not this one; try the next
+    }
+  }
+  return null;
 }
 
 /**

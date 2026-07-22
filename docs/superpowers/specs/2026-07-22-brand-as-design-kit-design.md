@@ -87,10 +87,31 @@ Smallest cut that exercises the whole new path end to end.
 - `buildSpec`'s brandKit guard must not start requiring `logoPath`; optional
   means optional.
 
+## Slice 2: the hook background (done)
+
+`hook-bg` became optional and now resolves `.svg`, `.png`, `.jpg`, `.jpeg`,
+`.webp` in that order. `brand.json` is the only required file in a brand
+folder.
+
+When there is no file, `HookCard` fills the same masked card from
+`badgeGradient` — the card's position and bloom are unchanged, only what fills
+it differs. So a brand can be pure config, pure drawing, or a photo, and none
+of those is the privileged case.
+
+One consequence worth recording: `buildSpec`'s guard used `hookBgPath` as its
+sentinel for "someone passed raw brand.json instead of `getBrand()` output".
+That stopped working the moment the field became optional — its absence no
+longer proves anything. The sentinel is now `slug`, which is a better one
+anyway: it is the field `getBrand()` always adds and `brand.json` never
+contains.
+
+Verified by rendering three ways: the real brand (unchanged photo card), a
+brand whose background is a hand-written SVG (gradient + dot screen +
+waveform), and a brand folder holding nothing but `brand.json`.
+
 ### Later slices (not this change)
 
-1. `hook-bg` optional + `.svg` accepted, renamed in the manifest.
-2. Karaoke: `captionFontSize`, `captionBottomInset`, `captionReadColor`, …
+1. Karaoke: `captionFontSize`, `captionBottomInset`, `captionReadColor`, …
    threaded from `brand.json` through `layout.ts` into `Captions.tsx`.
-3. Whatever comes next — the point of the optional-with-default rule is that
+2. Whatever comes next — the point of the optional-with-default rule is that
    this list never has to be finished up front.

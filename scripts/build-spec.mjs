@@ -974,7 +974,12 @@ export async function buildSpec({ scenes, workspaceDir, narrationAudioPath, bgmA
     // field nor the file, thrown from inside React, AFTER the ElevenLabs call
     // had already been paid for. Everything that can abort a run belongs
     // before the paid step; this one was arriving three steps late.
-    for (const field of ['hookBgPath', 'badgeLabel', 'displayName']) {
+    // `slug` is the sentinel, and it has to be: it is the one field getBrand()
+    // always adds and brand.json never contains. hookBgPath used to be checked
+    // here, but it is optional now -- a brand may legitimately have no cover
+    // art, so its absence no longer proves anything about how the kit was
+    // loaded.
+    for (const field of ['slug', 'badgeLabel', 'displayName']) {
       if (!brandKit[field]) {
         throw new Error(
           `buildSpec: brandKit is missing "${field}". Load it with getBrand(slug) from ` +

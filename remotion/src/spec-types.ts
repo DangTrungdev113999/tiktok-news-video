@@ -217,8 +217,13 @@ export interface CaptionLine {
  * docs/superpowers/specs/2026-07-18-multi-brand-kit-design.md.
  */
 export interface BrandKit {
-  /** Path relative to the repo root, e.g. "brand/mat-vu-tac-quyen/hook-bg.jpg". */
-  hookBgPath: string;
+  /**
+   * The hook scene's background, e.g. "brand/mat-vu-tac-quyen/hook-bg.jpg"
+   * (.svg/.png/.webp also resolve). Null when the folder has none, in which
+   * case HookCard draws the card from `badgeGradient` instead -- a brand
+   * whose cover is drawn rather than photographed should not need a photo.
+   */
+  hookBgPath?: string | null;
   /**
    * The brand's mark inside the badge disc, e.g.
    * "brand/mat-vu-tac-quyen/logo.svg". Null when the folder has no logo file,
