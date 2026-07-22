@@ -21,6 +21,7 @@ export const MainVideo: React.FC<VideoSpec> = ({
   bgmVolume,
   captions,
   brandKit,
+  hookDate,
 }) => {
   // Resolved once, here, and handed to BOTH text overlays. The headline, the
   // badge and the captions share one family by construction -- there is no
@@ -58,6 +59,7 @@ export const MainVideo: React.FC<VideoSpec> = ({
               headline={scene.hookHeadline ?? ""}
               brandKit={brandKit}
               fontFamily={fontFamily}
+              hookDate={hookDate}
             />
           ) : null}
         </Sequence>

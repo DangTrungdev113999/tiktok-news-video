@@ -109,6 +109,36 @@ the spec. `getBrand(slug, workspaceDir)` looks up a single brand by slug.
 Multi-brand is a pipeline-level concern: `spec.json` always carries exactly
 one already-resolved `brandKit`, and Remotion never knows others exist.
 
+## The badge row: ribbon left, optional date plate right
+
+The flush-left ribbon badge (logo disc + channel name + a skewed tail) gets
+its lighting — gloss, inner keylines, coloured bloom — from the brand's
+existing `badgeGradient`, stop 0 as the accent and stop 2 as the ink. **No new
+`brand.json` key**, so every brand already in the field got the better badge
+with no edit.
+
+`"hookDate": true` adds a publish-date plate on the right, mirroring the badge
+at the same height with its right edge on `SAFE.rightBelowButtons`. It is
+**off by default and per brand**: dating a post is one channel's editorial
+habit, not a house layout rule, so a brand that does not date its posts
+renders no plate and needs no edit to keep it that way.
+
+The plate is deliberately plain — white date, nothing else. Its dark backing
+exists only so white type is legible over an arbitrary photograph.
+
+The date string is `spec.hookDate`, **formatted on the node side** by
+`build-spec.mjs` and pinned to `Asia/Ho_Chi_Minh`. Reading a clock inside the
+renderer would break the rule that a render is a pure function of its spec:
+the same spec would produce a different video tomorrow, and a different one
+again on an employee's machine in another timezone.
+
+`buildSpec`'s `hookDate` argument overrides the brand's choice — a string sets
+the text, `null` suppresses the plate.
+
+**The plate and the badge share one row with no collision guard.** With a
+13-character `badgeLabel` the gap is only a few pixels; a much longer channel
+name will slide under the plate. Check the hook still when naming a brand.
+
 ## Karaoke geometry per brand
 
 `brand.json` may carry an optional `caption` block. Every key inside is also

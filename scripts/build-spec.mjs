@@ -813,7 +813,32 @@ function expandScreensIntoShots(screens, warnings = []) {
   return shots;
 }
 
-export async function buildSpec({ scenes, workspaceDir, narrationAudioPath, bgmAudioPath, bgmVolume, brandKit }) {
+/**
+ * The publish date the hook card shows, formatted HERE rather than in the
+ * renderer.
+ *
+ * The renderer has to stay a pure function of spec.json: Remotion renders
+ * frames independently and a re-render must produce the same video. A clock
+ * read inside the browser would make the same spec render differently
+ * tomorrow -- and, worse, differently on an employee's machine in another
+ * timezone than on the admin's. So the date is read once, on the node side,
+ * pinned to Asia/Ho_Chi_Minh, and written into the spec as a string.
+ */
+function todayInVietnam(now = new Date()) {
+  return new Intl.DateTimeFormat('vi-VN', {
+    timeZone: 'Asia/Ho_Chi_Minh',
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+  }).format(now);
+}
+
+/**
+ * @param {object} args
+ * @param {string|null} [args.hookDate] - overrides the publish date string;
+ *   pass null to suppress the plate even for a brand that opted in.
+ */
+export async function buildSpec({ scenes, workspaceDir, narrationAudioPath, bgmAudioPath, bgmVolume, brandKit, hookDate }) {
   if (!Array.isArray(scenes) || scenes.length === 0) {
     throw new Error('buildSpec requires a non-empty scenes[] array');
   }
@@ -992,6 +1017,11 @@ export async function buildSpec({ scenes, workspaceDir, narrationAudioPath, bgmA
       }
     }
     spec.brandKit = brandKit;
+    // Opt-in per BRAND, not per plugin: only a brand whose brand.json says
+    // `"hookDate": true` gets the date plate. An explicit `hookDate` argument
+    // still overrides, and null suppresses it.
+    const resolved = hookDate === undefined ? (brandKit.hookDate ? todayInVietnam() : null) : hookDate;
+    if (resolved) spec.hookDate = resolved;
   }
   return spec;
 }

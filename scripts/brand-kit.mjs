@@ -137,6 +137,7 @@ async function resolveBrandFolder(brandDir, slug) {
   }
 
   const caption = resolveCaptionOverrides(manifest.caption);
+  const hookDate = resolveHookDate(manifest.hookDate);
 
   // Optional files are probed, never required: a missing one yields null and
   // the renderer falls back, rather than knocking the whole brand out of the
@@ -159,7 +160,26 @@ async function resolveBrandFolder(brandDir, slug) {
     logoPath,
     fontPath,
     caption,
+    hookDate,
   };
+}
+
+/**
+ * `"hookDate": true` opts this brand's hook card into the publish-date plate
+ * beside the badge. OPTIONAL, and false by default: a channel that does not
+ * date its posts should not suddenly start, and the brands already in the
+ * field were designed without one.
+ *
+ * The brand only says WHETHER, never WHAT. The date itself is stamped by
+ * build-spec.mjs at build time -- a literal string here would be copied
+ * between brand folders and quietly go stale.
+ */
+function resolveHookDate(raw) {
+  if (raw === undefined || raw === null) return false;
+  if (typeof raw !== 'boolean') {
+    throw new Error(`${MANIFEST_FILENAME}: "hookDate" must be true or false (got ${JSON.stringify(raw)})`);
+  }
+  return raw;
 }
 
 /**

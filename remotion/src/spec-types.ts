@@ -256,6 +256,11 @@ export interface BrandKit {
   headlineShadow: [string, string, string];
   /** The headline's WebkitTextStroke color. */
   headlineStroke: string;
+  /**
+   * Whether this channel dates its posts. Read by scripts/build-spec.mjs to
+   * decide whether to stamp `hookDate` -- the renderer never sees it.
+   */
+  hookDate?: boolean;
 }
 
 export interface VideoSpec {
@@ -273,6 +278,13 @@ export interface VideoSpec {
   captions?: CaptionLine[];
   /** Present only when a scene has isHook: true. */
   brandKit?: BrandKit;
+  /**
+   * Publish date for the hook card's date plate, e.g. "22/07/2026", already
+   * formatted by scripts/build-spec.mjs. Present only when the chosen brand
+   * opted in with `"hookDate": true` -- absent is the normal case, and then
+   * the card has no plate at all.
+   */
+  hookDate?: string;
   // Index signature: Remotion's <Composition> constrains props to
   // Record<string, unknown>; every field above is still concretely typed
   // for consumers, this only satisfies that generic constraint.

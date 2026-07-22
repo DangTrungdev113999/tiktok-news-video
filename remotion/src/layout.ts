@@ -85,6 +85,26 @@ export const BADGE = {
 } as const;
 
 /**
+ * Publish-date plate, mirroring the badge across the frame at the same
+ * height. Its right edge is SAFE.rightBelowButtons, not rightAboveButtons:
+ * BADGE.top (1030) is well below SAFE.buttonColumnTop (862), so TikTok's
+ * action column has already narrowed the usable width to 886.
+ *
+ * Its colours come from the brand's own badgeGradient in HookCard, and
+ * WHETHER it appears at all comes from that brand's `"hookDate": true`. It is
+ * one channel's editorial habit, not a house layout rule -- a brand that does
+ * not date its posts renders no plate and needs no edit to stay that way.
+ */
+export const DATEPLATE = {
+  top: BADGE.top,
+  height: BADGE.height,
+  /** 1080 - 886 = 194, matching HEADLINE.rightInset. */
+  rightInset: 194,
+  fontSize: 42,
+  letterSpacing: 1.6,
+} as const;
+
+/**
  * The hook headline. Anchored by its BOTTOM edge, not its top: a headline is
  * user-supplied narration text of unpredictable length, and a top-anchored
  * block grows DOWNWARD into the covered band the moment it needs a 4th line.
@@ -106,6 +126,21 @@ export const HEADLINE = {
   bottomInset: 498,
   fontSize: 54,
   lineHeight: 1.34,
+  /**
+   * Outline weight around the white headline. Was 1.5 and the type sat flat
+   * on the card; the outline is what separates it from a busy background, so
+   * it does more for legibility than any shadow in the stack.
+   *
+   * This is only usable because HookCard sets `paint-order: stroke fill`.
+   * Chrome's default paints the stroke OVER the fill, so the whole width eats
+   * inward and anything past ~2px just reads as blur; with the paint order
+   * flipped the width lands outside the glyph instead.
+   *
+   * The ceiling is now the diacritics, not the counters: Vietnamese stacks
+   * marks close above the cap line (Ầ, Ủ, Ố), and past ~6px the outline of a
+   * mark starts merging into the outline of its letter.
+   */
+  strokeWidth: 5.5,
   /** Step down through these if the text would need more than `maxLines`. */
   fontSizeSteps: [54, 48, 44],
   /**
