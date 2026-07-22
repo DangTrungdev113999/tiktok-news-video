@@ -219,6 +219,13 @@ export interface CaptionLine {
 export interface BrandKit {
   /** Path relative to the repo root, e.g. "brand/mat-vu-tac-quyen/hook-bg.jpg". */
   hookBgPath: string;
+  /**
+   * The brand's mark inside the badge disc, e.g.
+   * "brand/mat-vu-tac-quyen/logo.svg". Null when the folder has no logo file,
+   * in which case HookCard draws a © glyph -- what every brand used to get
+   * whether it suited the channel or not.
+   */
+  logoPath?: string | null;
   /** Ribbon badge text, e.g. "Mật Vụ Tác Quyền". */
   badgeLabel: string;
   /** 3-stop gradient for the badge background, e.g. ["#FF9A3D", "#FF6A00", "#F04E00"]. */

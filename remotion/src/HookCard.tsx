@@ -68,6 +68,11 @@ export const HookCard: React.FC<HookCardProps> = ({ headline, brandKit }) => {
   // Solid white disc with the brand's darkest gradient stop as the mark,
   // matching the reference badge (the previous outlined-circle mark read as
   // an afterthought at this size).
+  //
+  // The disc holds the brand's own logo.svg when its folder has one. The `©`
+  // below is the fallback, not the design: it used to be hardcoded, which put
+  // a copyright symbol on every channel regardless of what the channel was
+  // about. Colors below only apply to that fallback glyph.
   const badgeIconStyle: CSSProperties = {
     width: BADGE.iconSize,
     height: BADGE.iconSize,
@@ -131,7 +136,23 @@ export const HookCard: React.FC<HookCardProps> = ({ headline, brandKit }) => {
         }}
       />
       <div style={badgeStyle}>
-        <div style={badgeIconStyle}>©</div>
+        <div style={badgeIconStyle}>
+          {brandKit.logoPath ? (
+            // Inset so the mark sits inside the disc rather than touching its
+            // rim, and `contain` so a wide or tall logo keeps its proportions
+            // instead of being squashed to a square.
+            <Img
+              src={staticFile(brandKit.logoPath)}
+              style={{
+                width: "78%",
+                height: "78%",
+                objectFit: "contain",
+              }}
+            />
+          ) : (
+            "©"
+          )}
+        </div>
         <span style={badgeLabelStyle}>{brandKit.badgeLabel}</span>
       </div>
       <div style={headlineStyle}>{headline}</div>

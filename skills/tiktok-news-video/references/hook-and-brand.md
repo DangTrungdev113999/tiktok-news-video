@@ -28,11 +28,31 @@ For the card's typography and geometry, see `text-layout.md`.
 
 ## Resolving the brand kit (the conditional user pause)
 
-`$WORKSPACE_DIR/brand/<slug>/` holds one self-contained brand kit
-(`hook-bg.jpg` + `brand.json` — badge text and full color palette). Brands are
+`$WORKSPACE_DIR/brand/<slug>/` holds one self-contained brand kit. Brands are
 prepared by the plugin owner (co-designed with Claude) and handed to employees
 as a folder to drop in — there is no registration command. See
 `docs/superpowers/specs/2026-07-18-multi-brand-kit-design.md`.
+
+```
+brand/<slug>/
+├── brand.json      REQUIRED — badge text + color palette
+├── hook-bg.jpg     REQUIRED — hook scene background
+└── logo.svg        optional — the badge mark
+```
+
+`logo.svg` (or `logo.png`; `.svg` wins when both exist) is drawn inside the
+badge's white disc. Without it the disc shows a `©` glyph — which every brand
+used to get unconditionally, copyright channel or not.
+
+Because `--public-dir` is the workspace, anything in the brand folder is
+already reachable via `staticFile()`. That is why a logo can be **SVG**: the
+renderer is Chrome, so vector markup needs no conversion and stays sharp.
+Assume it is static — Remotion renders frame by frame, so animation inside an
+SVG is not expected to survive. Motion belongs in the components.
+
+New brand keys are **optional with a default**, always. Making one required
+would invalidate every brand folder already in employees' hands. See
+`docs/superpowers/specs/2026-07-22-brand-as-design-kit-design.md`.
 
 ### Split in two: prove one EXISTS at Step 1, pick WHICH at Step 4
 
@@ -72,8 +92,10 @@ one already-resolved `brandKit`, and Remotion never knows others exist.
 
 ## Brand scope limits
 
-Brands vary by **color and badge text only**. There is no per-brand font, no
-per-brand mask height, no per-brand layout. Typography and every text position
-are house-wide constants in `remotion/src/layout.ts` — see `text-layout.md`.
-If a future brand genuinely needs different structural layout, that's a new
-design spec, not a silent widening of `brand.json`.
+Today brands vary by **color, badge text, and the badge mark**. Typography and
+every text position are still house-wide constants in `remotion/src/layout.ts`
+— see `text-layout.md`.
+
+That set is meant to grow (per-brand caption font and position are the next
+slices), but one key at a time, each with a stated default. A brand key that
+lands without a default is a bug: it breaks every folder already handed out.

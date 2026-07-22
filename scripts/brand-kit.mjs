@@ -14,6 +14,14 @@
 //   brand.json    -- {displayName, badgeLabel, badgeGradient[3],
 //                     badgeShadow, headlineShadow[3], headlineStroke}
 //
+// and MAY contain:
+//   logo.svg      -- the badge mark (falls back to a © glyph)
+//
+// Optional is load-bearing here, not politeness: a brand kit grows one key at
+// a time, and if each new key were required, every addition would invalidate
+// every brand folder already in the field. See
+// docs/superpowers/specs/2026-07-22-brand-as-design-kit-design.md.
+//
 // Usage (CLI):
 //   node scripts/brand-kit.mjs list
 //   node scripts/brand-kit.mjs get <slug>
@@ -29,6 +37,18 @@ import { getWorkspaceDir } from './workspace.mjs';
 
 const HOOK_BG_FILENAME = 'hook-bg.jpg';
 const MANIFEST_FILENAME = 'brand.json';
+
+/**
+ * The channel's mark, drawn inside the badge disc. OPTIONAL, and .svg comes
+ * first on purpose: the renderer is Chrome, so vector markup costs nothing to
+ * load and stays sharp at any badge size.
+ *
+ * Optional is the whole point. Before this, every brand wore the literal
+ * character `©`, hardcoded in HookCard.tsx -- a copyright symbol on channels
+ * that have nothing to do with copyright. A brand that drops a logo.svg in
+ * gets its own mark; one that doesn't keeps the old glyph and needs no edits.
+ */
+const LOGO_FILENAMES = ['logo.svg', 'logo.png'];
 const REQUIRED_MANIFEST_FIELDS = [
   'displayName',
   'badgeLabel',
@@ -72,6 +92,20 @@ async function resolveBrandFolder(brandDir, slug) {
     throw new Error(`${MANIFEST_FILENAME} missing field(s): ${missing.join(', ')}`);
   }
 
+  // Optional files are probed, never required: a missing one yields null and
+  // the renderer falls back, rather than knocking the whole brand out of the
+  // picker the way a missing hook-bg.jpg does.
+  let logoPath = null;
+  for (const filename of LOGO_FILENAMES) {
+    try {
+      await access(path.join(brandDir, filename), fsConstants.R_OK);
+      logoPath = path.posix.join('brand', slug, filename);
+      break;
+    } catch {
+      // not this one; try the next
+    }
+  }
+
   return {
     slug,
     displayName: manifest.displayName,
@@ -81,6 +115,7 @@ async function resolveBrandFolder(brandDir, slug) {
     headlineShadow: manifest.headlineShadow,
     headlineStroke: manifest.headlineStroke,
     hookBgPath: path.posix.join('brand', slug, HOOK_BG_FILENAME),
+    logoPath,
   };
 }
 
