@@ -196,9 +196,11 @@ Tell the user:
   (`$WORKSPACE_DIR/output/<dated-slug>/final.mp4`)
 - the video's duration
 - a one-line summary of what effects / BGM / brand were used, plus the **voice
-  and the pace level** (`config.local.json`'s `voiceId` + `narrationPace`, or
-  whatever was overridden for this run) — the pace changes how the whole video
-  feels and the user cannot tell 1.3× from 1.4× by reading a filename
+  and the pace level** — name the voice by its description from
+  `voices.json`, not by its id, and give `narrationPace` from
+  `config.local.json` (or whatever was overridden for this run). The pace
+  changes how the whole video feels and the user cannot tell 1.3× from 1.4×
+  by reading a filename
 - **every entry in `spec.warnings`**, plus what you resolved each
   `focus_object` to (which person, which coordinates, which cue word) — the
   author is the only one who can catch a misidentification

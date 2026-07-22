@@ -11,8 +11,8 @@
  *   3. Kiểm tra / cài ffmpeg
  *   4. Cài dependency cho Remotion + tải sẵn Chrome Headless Shell
  *   5. In bảng kiểm tra tổng hợp (pass/fail)
- *   6. Hỏi cấu hình: thư mục workspace (assets/bgm-library/output), ElevenLabs
- *      API key, voice_id
+ *   6. Hỏi cấu hình: thư mục workspace (assets/bgm-library/output) và
+ *      ElevenLabs API key. KHÔNG hỏi giọng đọc -- giọng chọn lúc làm video.
  *   7. Ghi config.local.json và .env
  *
  * config.local.json/.env KHÔNG nằm cạnh code (REPO_ROOT) -- khi plugin này
@@ -48,14 +48,6 @@ const REMOTION_DIR = path.join(REPO_ROOT, "remotion");
 const REMOTION_PKG = path.join(REMOTION_DIR, "package.json");
 const ENV_EXAMPLE_PATH = path.join(REPO_ROOT, ".env.example");
 
-// Hạnh -- nữ trẻ giọng Bắc, "Smooth, Clear and Feminine". Chọn 2026-07-21
-// sau khi thu thử 14 giọng Việt trên cùng một kịch bản.
-//
-// Giá trị cũ (FHhpndubmejSghqiumSv) là "thu-le-vn", mà mô tả chính thức của
-// nó trên ElevenLabs là "Vietnamese male voice cloned for cross-lingual
-// Indonesian TTS" -- một giọng clone để đọc tiếng INDONESIA. Nó chưa bao giờ
-// được ai chọn cho tiếng Việt; nó chỉ là giá trị còn sót lại. Đừng khôi phục.
-const DEFAULT_VOICE_ID = "pGapy9MNHCukzJtjavF0";
 const MIN_NODE_MAJOR = 18;
 
 const IS_MAC = process.platform === "darwin";
@@ -622,13 +614,23 @@ function getRemotionVersion(npxCmd) {
 // ---------------------------------------------------------------------------
 // Bước 6: Hỏi cấu hình (idempotent — hỏi lại nếu đã cấu hình trước đó)
 //
-// MẶC ĐỊNH init chỉ hỏi ĐÚNG MỘT câu: ElevenLabs API key. Thư mục workspace,
-// voice_id và nhịp đọc đều đã có giá trị mặc định do tác giả chọn sau khi đo
-// đạc (Hạnh / 4x / ~/Desktop/tiktok-news-video-workspace) -- hỏi lại chúng là
-// bắt một nhân viên không rành kỹ thuật quyết định ba việc mà họ không có
-// thông tin để quyết, và câu trả lời đúng luôn là "Enter".
+// MẶC ĐỊNH init chỉ hỏi ĐÚNG MỘT câu: ElevenLabs API key. Thư mục workspace
+// và nhịp đọc đều đã có giá trị mặc định do tác giả chọn sau khi đo đạc
+// (4x / ~/Desktop/tiktok-news-video-workspace) -- hỏi lại chúng là bắt một
+// nhân viên không rành kỹ thuật quyết định những việc mà họ không có thông
+// tin để quyết, và câu trả lời đúng luôn là "Enter".
 //
-// Ba giá trị đó vẫn đổi được, ở đúng chỗ mà việc đổi có nghĩa:
+// INIT KHÔNG CÒN HỎI GIỌNG ĐỌC. Giọng được chọn lúc LÀM VIDEO, từ thư viện
+// `<workspace>/voices.json` (scripts/voice-library.mjs). Lý do: một giọng cố
+// định ở init là một quyết định lấy MỘT LẦN cho MỌI video sau đó, trong khi
+// người dùng thật sự cần đổi giọng theo từng kênh và từng bài. Init là chỗ
+// duy nhất KHÔNG nên hỏi câu đó -- nó xa thời điểm dùng nhất.
+//
+// Init cũng không còn ghi `voiceId` / `ELEVENLABS_VOICE_ID` nữa. Cấu hình cũ
+// vẫn được giữ nguyên (đọc lên rồi ghi lại), và voice-library.mjs tự chuyển
+// nó vào voices.json ở lần làm video đầu tiên -- xem doc của `listVoices`.
+//
+// Những giá trị còn lại vẫn đổi được ở đúng chỗ việc đổi có nghĩa:
 //   - cho MỘT video:  synthesizeScript({ voiceId, paceLabel })
 //   - vĩnh viễn:      `npm run init -- --nang-cao` (hoặc --advanced)
 // ---------------------------------------------------------------------------
@@ -652,7 +654,11 @@ async function stepConfigure(ask, { advanced = false } = {}) {
   // Những gì đã có sẵn luôn thắng giá trị mặc định — init chạy lại nhiều lần
   // (mỗi bản cập nhật plugin là một lần) và không lần nào được phép xoá cấu
   // hình cũ của người dùng.
-  const savedVoiceId = existingConfig?.voiceId || existingEnv.ELEVENLABS_VOICE_ID || DEFAULT_VOICE_ID;
+  // GIỮ, KHÔNG TẠO. Init không hỏi và không đặt giọng nữa, nhưng máy nào đã
+  // có sẵn giọng cũ thì phải mang nguyên nó qua -- xoá đi là đổi giọng của
+  // người dùng mà không ai bấm gì. `null` khi chưa từng có, và lúc đó
+  // writeConfigFiles sẽ không tự bịa ra một giọng.
+  const savedVoiceId = existingConfig?.voiceId || existingEnv.ELEVENLABS_VOICE_ID || null;
   const savedPace = existingConfig?.narrationPace || DEFAULT_PACE_LABEL;
   const savedKey = existingEnv.ELEVENLABS_API_KEY || "";
   const savedWorkspace = existingConfig?.workspaceDir || null;
@@ -673,15 +679,15 @@ async function stepConfigure(ask, { advanced = false } = {}) {
     if (savedKey) {
       log("Máy này đã cấu hình xong từ trước — không cần nhập lại gì cả.");
       log(`  - Thư mục workspace: ${workspaceDir}`);
-      log(`  - Giọng đọc: ${savedVoiceId}`);
       log(`  - Nhịp đọc: ${savedPace}`);
       log("  - ElevenLabs API key: đã có");
-      log("\n(Muốn đổi thư mục / giọng / nhịp đọc: chạy lại init kèm --nang-cao)");
+      log("\nGiọng đọc: chọn lúc làm video, không đặt ở đây.");
+      log("\n(Muốn đổi thư mục / nhịp đọc: chạy lại init kèm --nang-cao)");
       return { workspaceDir, voiceId: savedVoiceId, apiKey: savedKey, narrationPace: savedPace, bgmLibrary, wrote: false };
     }
 
     log("");
-    log(`Giọng đọc: Hạnh — nữ trẻ giọng Bắc, rõ chữ, hợp tin tức. Nhịp đọc: ${savedPace}.`);
+    log(`Nhịp đọc: ${savedPace}. Giọng đọc thì chọn lúc làm video, không đặt ở đây.`);
     log("");
     log("Còn một thứ nữa cần bạn điền: API key ElevenLabs (để plugin tự lồng tiếng).");
     log("Lấy key ở: https://elevenlabs.io/app/settings/api-keys");
@@ -697,7 +703,6 @@ async function stepConfigure(ask, { advanced = false } = {}) {
   if (existingConfig || Object.keys(existingEnv).length > 0) {
     log("Đã tìm thấy cấu hình trước đó:");
     if (savedWorkspace) log(`  - Thư mục workspace: ${savedWorkspace}`);
-    log(`  - Voice ID: ${savedVoiceId}`);
     log(`  - ElevenLabs API key: ${savedKey ? "đã có" : "chưa có"}`);
     log(`  - Nhịp đọc: ${savedPace}`);
     const answer = await ask("\nBạn có muốn cấu hình lại không? (y/N): ");
@@ -719,28 +724,20 @@ async function stepConfigure(ask, { advanced = false } = {}) {
   ensureWorkspaceSubdirs(workspaceDir);
 
   // --- ElevenLabs API key ---
-  // Hai thứ khác nhau, hỏi riêng: key là tài khoản (bí mật, tính tiền theo
-  // ký tự), voice_id là GIỌNG (công khai, ai cũng dùng chung được).
-  section("Giọng đọc: cần HAI thứ");
-  log("1) API key  — tài khoản ElevenLabs của bạn. Bí mật, và nó tính tiền theo số ký tự.");
-  log("2) voice_id — chọn ai đọc. Không bí mật; đây là mã giọng lấy từ thư viện chung.");
+  // Key là TÀI KHOẢN: bí mật, tính tiền theo ký tự. Nó khác hẳn voice_id --
+  // vốn chỉ là mã một giọng công khai -- và voice_id không còn được hỏi ở đây
+  // nữa (xem chú thích đầu Bước 6). Chỗ chọn giọng là lúc làm video.
+  section("ElevenLabs API key");
+  log("Đây là tài khoản ElevenLabs của bạn. Bí mật, và nó tính tiền theo số ký tự.");
   log("");
   log("Lấy API key ở: https://elevenlabs.io/app/settings/api-keys");
   log("Nếu bạn luôn tự cung cấp file MP3 lời đọc riêng, có thể bỏ qua key (nhấn Enter).");
   const apiKey = await askApiKey(ask, savedKey);
 
-  // --- Voice ID ---
-  log("\nvoice_id là mã giọng đọc, lấy trong Voice Library của ElevenLabs.");
-  log("Mở https://elevenlabs.io/app/voice-library, lọc ngôn ngữ Vietnamese, nghe thử,");
-  log("bấm vào giọng nào bạn thích rồi copy ID của nó.");
-  log(`\nMặc định là ${DEFAULT_VOICE_ID} — "Hạnh", nữ trẻ giọng Bắc, rõ chữ, hợp tin tức.`);
-  log("(Chọn sau khi thu thử 14 giọng Việt trên cùng một kịch bản.)");
-  const voiceId = await askVoiceId(ask, apiKey, savedVoiceId);
-
   // --- Mức kéo nhanh lời đọc ---
   const narrationPace = await askNarrationPace(ask, existingConfig?.narrationPace);
 
-  return { workspaceDir, voiceId, apiKey, narrationPace, bgmLibrary, wrote: true };
+  return { workspaceDir, voiceId: savedVoiceId, apiKey, narrationPace, bgmLibrary, wrote: true };
 }
 
 /**
@@ -892,61 +889,15 @@ async function askApiKey(ask, savedKey = "") {
   }
 }
 
-/**
- * Hỏi voice_id VÀ kiểm chứng nó nói được tiếng Việt.
- *
- * Cái vế thứ hai mới là quan trọng, và nó đến từ một sai lầm có thật: một
- * model đọc nhanh nhưng không hỗ trợ tiếng Việt đã lọt qua tới tận lúc người
- * dùng nghe thử. Giọng cũng vậy -- voice_id mặc định cũ là bản clone để đọc
- * tiếng Indonesia. `verified_languages` trong API trả lời được câu này, nên
- * không có lý do gì để đoán.
+/*
+ * `askVoiceId` từng ở đây. Nó đã được chuyển sang scripts/voice-library.mjs
+ * (`describeVoice`) cùng với phần giá trị nhất của nó: kiểm tra `vi` có nằm
+ * trong `verified_languages` không. Đó không phải chuyện thừa -- voice_id mặc
+ * định cũ của chính dự án này là một bản clone để đọc tiếng INDONESIA, và một
+ * giọng sai ngôn ngữ vẫn phát ra âm thanh rất tự tin. Việc kiểm tra bây giờ
+ * chạy lúc THÊM giọng vào thư viện, tức vẫn đúng khoảnh khắc người dùng gõ
+ * một mã lạ vào.
  */
-async function askVoiceId(ask, apiKey, savedVoiceId = DEFAULT_VOICE_ID) {
-  for (;;) {
-    // Enter giữ giọng đang lưu, không quay về mặc định — cùng lý do với key.
-    const isDefault = savedVoiceId === DEFAULT_VOICE_ID;
-    const answer =
-      (await ask(`\nNhập voice_id (Enter để ${isDefault ? "dùng Hạnh" : `giữ ${savedVoiceId}`}): `)).trim() ||
-      savedVoiceId;
-
-    if (!apiKey) {
-      log(`⏭️  Chưa có API key nên chưa kiểm chứng được giọng. Lưu ${answer}.`);
-      return answer;
-    }
-
-    const res = await callElevenLabs(`https://api.elevenlabs.io/v1/voices/${encodeURIComponent(answer)}`, apiKey);
-    if (!res.ok) {
-      if (res.status === 400 || res.status === 404) {
-        log(`❌ Không tìm thấy voice_id "${answer}" trên tài khoản này.`);
-        const retry = await ask("Nhập lại? (Y/n): ");
-        if (retry.trim().toLowerCase().startsWith("n")) return answer;
-        continue;
-      }
-      log(`⚠️  Chưa kiểm chứng được giọng (${res.networkError ?? `HTTP ${res.status}`}). Vẫn lưu ${answer}.`);
-      return answer;
-    }
-
-    const v = res.json ?? {};
-    const langs = new Set([
-      ...(v.verified_languages ?? []).map((l) => l.language),
-      ...(v.labels?.language ? [v.labels.language] : []),
-    ]);
-    const labels = v.labels ?? {};
-    const traits = [labels.gender, labels.age, labels.accent, labels.descriptive].filter(Boolean).join(", ");
-    log(`✅ Giọng: "${v.name}"${traits ? ` — ${traits}` : ""}`);
-
-    if (!langs.has("vi")) {
-      log("");
-      log("⚠️  CẢNH BÁO: giọng này KHÔNG được ElevenLabs xác nhận là nói tiếng Việt.");
-      log(`   Ngôn ngữ nó hỗ trợ: ${[...langs].join(", ") || "(không khai báo)"}`);
-      log("   Một giọng sai ngôn ngữ vẫn đọc ra âm thanh, nhưng phát âm chữ Việt");
-      log("   bằng bộ âm của tiếng khác — nghe là biết ngay.");
-      const keep = await ask("Vẫn dùng giọng này? (y/N): ");
-      if (!keep.trim().toLowerCase().startsWith("y")) continue;
-    }
-    return answer;
-  }
-}
 
 /**
  * Hỏi mức kéo nhanh lời đọc.
@@ -989,10 +940,14 @@ function writeConfigFiles({ workspaceDir, voiceId, apiKey, narrationPace, bgmLib
   } catch {
     prev = {};
   }
+  // `voiceId` chỉ được GIỮ LẠI nếu máy này vốn đã có, chứ init không còn tạo
+  // ra nó nữa. Máy mới sẽ không có khoá này -- và đúng như vậy: giọng nằm ở
+  // `<workspace>/voices.json`, chọn lúc làm video. Máy cũ thì vẫn còn khoá,
+  // và voice-library.mjs sẽ tự chuyển nó sang voices.json ở lần dùng đầu.
   const configObj = {
     ...prev,
     workspaceDir,
-    voiceId,
+    ...(voiceId ? { voiceId } : {}),
     narrationPace: narrationPace || DEFAULT_PACE_LABEL,
     bgmLibrary: bgmLibrary || [],
   };
@@ -1009,10 +964,15 @@ function writeConfigFiles({ workspaceDir, voiceId, apiKey, narrationPace, bgmLib
   } else {
     envContent += `\nELEVENLABS_API_KEY=${apiKey}\n`;
   }
+  // Cùng lý do với configObj.voiceId: giữ chứ không tạo. Và .env ở đây được
+  // dựng lại từ .env.example chứ không phải đọc từ file cũ, nên nếu không ghi
+  // lại giá trị cũ thì nó biến mất -- `savedVoiceId` phía trên tồn tại chính
+  // là để đi qua được chỗ này.
+  const voiceLine = voiceId ? `ELEVENLABS_VOICE_ID=${voiceId}` : "";
   if (/^ELEVENLABS_VOICE_ID=.*$/m.test(envContent)) {
-    envContent = envContent.replace(/^ELEVENLABS_VOICE_ID=.*$/m, `ELEVENLABS_VOICE_ID=${voiceId}`);
-  } else {
-    envContent += `ELEVENLABS_VOICE_ID=${voiceId}\n`;
+    envContent = envContent.replace(/^ELEVENLABS_VOICE_ID=.*\n?/m, voiceLine ? `${voiceLine}\n` : "");
+  } else if (voiceLine) {
+    envContent += `${voiceLine}\n`;
   }
   fs.writeFileSync(ENV_PATH, envContent, "utf8");
 }
@@ -1073,8 +1033,8 @@ function printFinalChecklist({ ffmpegInfo, remotionResult, config }) {
 
   log("");
   log(`Thư mục workspace (assets/bgm-library/output): ${config.workspaceDir || "(chưa cấu hình)"}`);
-  log(`Voice ID mặc định: ${config.voiceId}`);
   log(`Nhịp đọc: ${config.narrationPace} (atempo ${paceLevel(config.narrationPace).tempo.toFixed(2)}x)`);
+  log("Giọng đọc: chọn lúc làm video (thư viện giọng nằm trong workspace, file voices.json).");
   if (config.wrote) {
     log(`\nĐã ghi cấu hình vào:\n  - ${CONFIG_PATH}\n  - ${ENV_PATH}`);
   }
@@ -1102,7 +1062,7 @@ async function main() {
   const advanced = process.argv.slice(2).some((a) => a === "--nang-cao" || a === "--advanced");
 
   log("tiktok-news-video — thiết lập lần đầu cho máy này (npm run init)");
-  if (advanced) log("(chế độ nâng cao: hỏi cả thư mục, giọng đọc và nhịp đọc)");
+  if (advanced) log("(chế độ nâng cao: hỏi cả thư mục và nhịp đọc)");
 
   stepDetectOS();
   stepCheckNode();

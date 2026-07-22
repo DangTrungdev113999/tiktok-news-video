@@ -14,8 +14,8 @@ scene (word-level timing for Step 4's karaoke captions).
 **No MP3** → build `ttsText` per scene, adding ElevenLabs v3 audio tags per
 `$CODE_ROOT/knowledge/elevenlabs-v3-tts.md`'s selection method (sparse,
 action-adjacent, matched to each scene's rhetorical role). Then run
-`scripts/tts-elevenlabs.mjs` with the scenes + `voiceId` from `$CONFIG_FILE` +
-the API key from `<home>/.tiktok-news-video/.env`. You get the synthesized
+`scripts/tts-elevenlabs.mjs` with the scenes + the `voiceId` chosen in **Step
+2b below** + the API key from `<home>/.tiktok-news-video/.env`. You get the synthesized
 narration file AND `{startSec, endSec}` **and `words[]`** per scene from the
 same call — no separate alignment step needed on this path.
 
@@ -54,6 +54,56 @@ start) before converting to frames, so you don't need to do this by hand.
 
 `words[]` timing is left untouched by that close — captions must track real
 speech, not the extended hold. Pass `words[]` straight through.
+
+## Step 2b — Voice (a user pause, TTS path only)
+
+**Skip this entirely on the MP3 path.** A run that synthesizes nothing needs no
+voice, and asking for one is asking a question whose answer gets thrown away.
+
+The voice used to be frozen at init: one id, chosen once, for every video
+forever. That was the wrong place for the decision — init runs furthest from
+the moment the choice matters, and the same person makes videos for several
+channels that should not all sound alike. Init no longer asks; **you do, every
+TTS run.**
+
+Run `node $CODE_ROOT/scripts/voice-library.mjs list`.
+
+- **Library has voices** → show them numbered, with each one's description,
+  plus a final option **"thêm giọng mới"**. Whatever they pick, pass its
+  `voice_id` to `synthesizeScript` as `voiceId` — always explicitly, never by
+  letting the fallback decide.
+- **Library empty** → two options, not an open prompt:
+  1. `Hạnh — nữ trẻ giọng Bắc, rõ chữ, hợp tin tức` (`pGapy9MNHCukzJtjavF0`),
+     the one voice this project has actually auditioned;
+  2. nhập voice_id mới.
+- **Adding a voice** → ask for the id AND for a description in the user's own
+  words ("giọng nam trầm cho kênh crypto"), then
+  `node $CODE_ROOT/scripts/voice-library.mjs add <voiceId> <mô tả>`.
+  The description is required, and it is the whole point: an id is 20 random
+  characters and tells the next person nothing.
+
+### Validate before you save, and say what came back
+
+`add` checks the id against ElevenLabs and reports whether `vi` is in the
+voice's `verified_languages`. **Show that answer to the user before using the
+voice.** A voice not verified for Vietnamese still produces confident audio —
+it pronounces Vietnamese with another language's phonemes. This project shipped
+exactly that mistake once: its own long-standing default id turned out to be a
+voice cloned for cross-lingual *Indonesian* TTS.
+
+If the check cannot run (no network, no key), say so plainly and continue — an
+unreachable API is not evidence that an id is wrong.
+
+### Where the list lives, and why it matters here
+
+`<workspace>/voices.json`, beside `brand/` and `bgm-library/` — **not** in
+`config.local.json`. An admin preparing a template folder for employees can
+curate the voice list once and every employee receives it; config.local.json is
+rebuilt per machine by init and can carry nothing to anyone.
+
+Machines configured before the library existed keep their old voice: the first
+`list` migrates `config.local.json`'s `voiceId` (or `.env`'s
+`ELEVENLABS_VOICE_ID`) into `voices.json` automatically.
 
 ## Step 3 — BGM (THE user pause)
 

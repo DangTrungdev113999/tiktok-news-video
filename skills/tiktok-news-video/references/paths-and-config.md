@@ -27,9 +27,15 @@ CONFIG_FILE = <home>/.tiktok-news-video/config.local.json
               or use %USERPROFILE% on Windows / $HOME on macOS.
               Fixed home-directory path, independent of CODE_ROOT and stable
               across every plugin update. Read this file's `workspaceDir`
-              field to get WORKSPACE_DIR below. Also holds `voiceId`,
+              field to get WORKSPACE_DIR below. Also holds
               `narrationPace` (see narration-pace.md), `bgmLibrary[]` and
               `ffmpegDir`.
+
+              It may also still hold a legacy `voiceId`. Do NOT read it: the
+              voice is chosen per video from `<WORKSPACE_DIR>/voices.json`
+              (see narration-and-bgm.md, Step 2b). Init no longer writes the
+              key, and voice-library.mjs migrates any surviving one into
+              voices.json on first use.
 
               `ffmpegDir` is set only when init had to fetch ffmpeg itself
               (Windows, nothing on PATH) — it points at `<CONFIG_DIR>/bin`.
@@ -41,10 +47,10 @@ CONFIG_FILE = <home>/.tiktok-news-video/config.local.json
               The ElevenLabs API key lives alongside it in
               `<home>/.tiktok-news-video/.env` (ELEVENLABS_API_KEY=...).
 
-              `voiceId` and `narrationPace` are saved defaults, not per-run
-              answers -- do not ask about them each time. Override either for
-              a single video via synthesizeScript's `voiceId` / `paceLabel`
-              options, which never write back to this file.
+              `narrationPace` is a saved default, not a per-run answer --
+              do not ask about it each time. Override it for a single video
+              via synthesizeScript's `paceLabel`, which never writes back to
+              this file. The VOICE is the opposite: ask every TTS run.
 
 WORKSPACE_DIR = config.local.json's `workspaceDir` field. Default:
               `<home>/tiktok-news-video-workspace` on Windows,

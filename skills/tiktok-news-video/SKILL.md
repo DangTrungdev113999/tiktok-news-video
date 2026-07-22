@@ -47,7 +47,7 @@ So, before Step 1:
   - **`$CODE_ROOT/remotion/node_modules/@remotion/cli/` missing** → the render
     engine is not installed *for this copy of the plugin*. Hand off to init
     too, and tell the user to answer **N** when it asks whether to
-    reconfigure — their key, voice and pace are kept.
+    reconfigure — their key and pace are kept.
 
   The second is the common case and the config check cannot see it. Config
   lives in the home folder and survives forever; `node_modules` (~600MB) and
@@ -68,12 +68,14 @@ So, before Step 1:
   rely on. Never ask them to move files there themselves — the whole point is
   that the location is the pipeline's problem, not theirs. See
   `asset-naming.md`.
-- **Offer the voice and pace only if the user brings them up.** Both live in
-  `$CONFIG_FILE` (`voiceId`, `narrationPace`) and hold across runs. A user who
-  says "đọc nhanh hơn" or names a different voice for THIS video gets it via
-  `synthesizeScript`'s `voiceId` / `paceLabel` options — a per-run override
-  that does not touch their saved defaults. Don't raise it unprompted; it is
-  settled configuration, not a decision the pipeline needs made.
+- **The voice is asked EVERY run, on the TTS path** — see "Step 2b — Voice" in
+  `narration-and-bgm.md`. It is no longer a setting; init does not ask for it
+  and `$CONFIG_FILE` no longer records one. Skip the question entirely when the
+  user supplied their own MP3: that run synthesizes nothing.
+- **The pace is still settled configuration.** `narrationPace` lives in
+  `$CONFIG_FILE` and holds across runs; don't raise it unprompted. A user who
+  says "đọc nhanh hơn" gets `synthesizeScript`'s `paceLabel` for THIS video
+  only, without touching their saved default.
 
 ### Everything that can stop the run, checked BEFORE the paid call
 
