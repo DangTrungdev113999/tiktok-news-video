@@ -16,7 +16,7 @@ Apply the classification table in `knowledge/effect-catalog.md` exactly:
 |---|---|
 | landscape image (`w/h >= 1.2`) | **pan** — real Ken-Burns traversal |
 | portrait image (`h/w >= 1.2`) | **zoom** — push/pull alternating |
-| square-ish image (`0.83 <= w/h < 1.2`) | **diagonal** / **rotate**, alternating |
+| square-ish image (`0.83 <= w/h < 1.2`) | **diagonal**, drift direction alternating L↔R |
 | any video | **passthrough** — native playback, no synthetic motion |
 
 Plus a `contain-blur-pad` fit override when cropping would lose too much (see
@@ -96,4 +96,4 @@ picture physically in the layout. That is `PanMedia` and `SlideMedia`.
 
 The test for whether a future effect needs the same treatment: **does it move
 the frame far enough to leave what a frame-sized element holds?** Pure scale
-(`zoom`) and small drifts (`diagonal`, `rotate`) do not. A traverse does.
+(`zoom`) and small drifts (`diagonal`) do not. A traverse does.

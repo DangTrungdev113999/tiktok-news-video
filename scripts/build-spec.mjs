@@ -70,7 +70,7 @@ function coverCropFraction(ratioWH, targetRatio) {
  * @param {number} occurrence.landscape
  * @param {number} occurrence.portrait
  * @param {number} occurrence.square
- * @returns {{effect:'pan'|'zoom'|'diagonal'|'rotate'|'passthrough', direction?:'left'|'right', zoomVariant?:'in'|'out', fit:'cover'|'contain-blur-pad'}}
+ * @returns {{effect:'pan'|'zoom'|'diagonal'|'passthrough', direction?:'left'|'right', zoomVariant?:'in'|'out', fit:'cover'|'contain-blur-pad'}}
  */
 export function classifyAsset(probe, occurrence = { landscape: 0, portrait: 0, square: 0 }) {
   const { type, width, height } = probe;
@@ -112,11 +112,13 @@ export function classifyAsset(probe, occurrence = { landscape: 0, portrait: 0, s
   }
 
   if (ratioWH >= SQUARE_MIN && ratioWH < LANDSCAPE_RATIO) {
-    // Alternate between the diagonal drift and a subtle rotate+zoom for
-    // extra variety across consecutive square-ish scenes.
-    const direction = occurrence.square % 4 < 2 ? 'left' : 'right';
-    const effect = occurrence.square % 2 === 0 ? 'diagonal' : 'rotate';
-    return { effect, direction, fit };
+    // Square-ish images all get the diagonal drift. Direction alternates
+    // L,R,L,R across consecutive square scenes so two in a row never read the
+    // same way. (This used to alternate diagonal/rotate with an L,L,R,R
+    // direction pattern; rotate was removed 2026-07-22 and the direction
+    // switched to %2 so the anti-repetition survives without it.)
+    const direction = occurrence.square % 2 === 0 ? 'left' : 'right';
+    return { effect: 'diagonal', direction, fit };
   }
 
   // Fallback for anything the three contiguous ranges above didn't catch --

@@ -15,7 +15,7 @@ import type { CaptionOverrides } from "./layout";
 
 export type AssetType = "image" | "video";
 
-export type Effect = "pan" | "zoom" | "diagonal" | "rotate" | "passthrough" | "slide";
+export type Effect = "pan" | "zoom" | "diagonal" | "passthrough" | "slide";
 
 /**
  * A `slide_left_right` / `slide_right_left` traverse across the picture,
@@ -138,7 +138,7 @@ export interface SceneSpec {
   assetPath: string;
   assetType: AssetType;
   effect: Effect;
-  /** Required for pan/diagonal/rotate (drift/spin direction). Ignored for zoom/passthrough. */
+  /** Required for pan/diagonal (drift direction). Ignored for zoom/passthrough. */
   direction?: Direction;
   /** Only meaningful for effect "zoom" -- push/pull alternation. Defaults to "in". */
   zoomVariant?: ZoomVariant;

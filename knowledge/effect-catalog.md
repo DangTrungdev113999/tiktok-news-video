@@ -1,7 +1,7 @@
 > **Superseded 2026-07-20 — fit rules only.** Every image now defaults to
 > `contain-blur-pad`, with bands placed by aspect ratio; `cover` is opt-in via
 > the `fill_full_screen` tag. Any crop-loss threshold described below no longer
-> selects the fit. The EFFECT rules (pan / zoom / diagonal / rotate by aspect
+> selects the fit. The EFFECT rules (pan / zoom / diagonal by aspect
 > class) are unchanged and still authoritative.
 
 # Visual effect catalog — deterministic, aspect-ratio-driven
@@ -21,7 +21,7 @@ Read the asset's natural pixel dimensions (`w`, `h`) via `probe-asset.mjs`
 |---|---|---|
 | `w / h >= 1.2` AND is image | landscape | **pan**: real Ken-Burns traversal across the image's TRUE cover-crop overflow (see "Pan — real crop traversal" below) + a small cosmetic zoom 100%→106%. Direction alternates L↔R by occurrence index *within landscape scenes* so consecutive landscape scenes don't repeat the same drift. |
 | `h / w >= 1.2` AND is image | portrait | **zoom**: centered scale, alternating **push** (100%→120%, `zoomVariant:"in"`) and **pull** (120%→100%, `zoomVariant:"out"`) across consecutive portrait scenes — see "Push/pull alternation" below. |
-| `0.83 <= w/h < 1.2` AND is image | square-ish | Alternates between **diagonal** (small drift ±5% x/y + zoom 100%→108%) and **rotate** (subtle 0°→±3° spin + zoom 100%→115%, see below) across consecutive square-ish scenes, for variety. |
+| `0.83 <= w/h < 1.2` AND is image | square-ish | **diagonal** (small drift ±5% x/y + zoom 100%→108%). Drift **direction alternates L,R,L,R** across consecutive square-ish scenes so two in a row never read the same. (Rotate was removed 2026-07-22; the direction switched from an L,L,R,R pattern to %2 so the anti-repetition survives without it.) |
 | any video file | video | **passthrough**: native playback, no synthetic motion added (source audio always muted — see §D/§E). If the clip's own duration is shorter than the scene's allotted time, loop it; if longer, trim to the scene's duration (never speed up/down). |
 
 ### Pan — real crop traversal (fixed 2026-07-18, was a latent bug)
@@ -31,7 +31,7 @@ cover`, then translated it, clamping the translate to the overflow a GIVEN
 ZOOM SCALE creates (`clampToAxisOverflow` in `Scene.tsx`). At the original
 `PAN_ZOOM_END = 1.08` that clamp bounds translate to **~3.4% of frame width**
 — regardless of how wide the source image actually is. That's the right
-clamp for square-ish diagonal/rotate (where real cover overflow genuinely is
+clamp for square-ish diagonal (where real cover overflow genuinely is
 near-zero — see "Frame fit" below), but for a landscape photo whose real
 cover-crop overflow is ~68% of its width, it left almost all of that overflow
 unused: the pan barely moved.
@@ -55,17 +55,6 @@ already unclamped (no crop edge to respect there).
 All ramps use a cinematic ease-out curve (`Easing.bezier(0.22,1,0.36,1)` in
 `Scene.tsx`'s `MOTION_EASING`), not linear interpolation — motion settles
 gently instead of moving at constant mechanical speed.
-
-### Rotate — the geometry that keeps it safe
-
-Rotating a `cover`-filled frame exposes corners unless the zoom compensates.
-For a `w×h` frame rotated by `θ`, the minimum safe scale is
-`cos(θ) + (h/w)·sin(θ)` — for the 1080×1920 frame at 3°, that's ~1.092.
-`ROTATE_ZOOM_END = 1.15` leaves real margin above that. Rotation and zoom
-ramp **monotonically together** (0°→±3° alongside 100%→115%, both starting
-at rest at frame 0), NOT oscillating like pan/diagonal — if they started
-already offset (as pan/diagonal do), the frame would be under-scaled for the
-angle already reached at frame 0, exposing black corners.
 
 ## Frame fit — cover vs. contain+blur-pad
 
