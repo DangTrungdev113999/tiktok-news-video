@@ -151,6 +151,31 @@ export const CAPTION = {
   unreadColor: "#FFFFFF",
 } as const;
 
+/** The subset of CAPTION a brand may override in its brand.json. */
+export type CaptionOverrides = Partial<
+  Pick<
+    typeof CAPTION,
+    "left" | "rightInset" | "bottomInset" | "fontSize" | "lineHeight" | "wordGap"
+  >
+>;
+
+/**
+ * Merge a brand's caption overrides over the house defaults.
+ *
+ * The merge lives HERE, and the defaults live only in CAPTION above, because
+ * the node side (scripts/brand-kit.mjs) passes through nothing but the keys a
+ * brand actually set. If it filled in defaults instead, every later change to
+ * CAPTION would silently disagree with a stale copy over there -- and the
+ * disagreement would surface only as a video that looks slightly wrong.
+ *
+ * Positions arriving here have already been clamped to TikTok's safe zone by
+ * build-spec.mjs, which also emits the warning. This function does not
+ * re-check: two clamp sites means two places to disagree about the floor.
+ */
+export function resolveCaption(overrides?: CaptionOverrides | null) {
+  return { ...CAPTION, ...(overrides ?? {}) };
+}
+
 /**
  * Average advance width of one uppercase Oswald-700 glyph (spaces included),
  * as a fraction of the font size. Used ONLY by `fitHeadlineFontSize`.

@@ -959,6 +959,9 @@ export async function buildSpec({ scenes, workspaceDir, narrationAudioPath, bgmA
     spec.bgmVolume = bgmVolume ?? DEFAULT_BGM_VOLUME;
   }
   if (captionLines.length > 0) spec.captions = captionLines;
+  if (brandKit?.caption) {
+    brandKit = { ...brandKit, caption: clampCaptionToSafeZone(brandKit.caption, warnings) };
+  }
   if (warnings.length > 0) spec.warnings = warnings;
   if (sceneSpecs.some((s) => s.isHook)) {
     if (!brandKit) {
@@ -991,6 +994,46 @@ export async function buildSpec({ scenes, workspaceDir, narrationAudioPath, bgmA
     spec.brandKit = brandKit;
   }
   return spec;
+}
+
+/**
+ * TikTok's own UI is drawn OVER the video: caption text down the left, the
+ * like/comment/share column on the right, the progress bar along the bottom.
+ * Anything rendered outside the safe box is liable to be covered on a real
+ * phone -- and the author cannot see that in the rendered MP4, only on the
+ * platform, after posting.
+ *
+ * So a brand's caption position is CLAMPED, not rejected. Out-of-zone is
+ * renderable; it just renders somewhere invisible, which makes it a bad
+ * default rather than a broken brand. The warning names the value that was
+ * changed and what it became -- silently clamping would be the same class of
+ * mistake as silently defaulting a workspace folder.
+ *
+ * These three floors mirror `SAFE` in remotion/src/layout.ts, which is where
+ * they were measured (from the user's safe-zone.jpg overlay). This is the one
+ * place the numbers are duplicated on the node side; keep them in step.
+ */
+const CAPTION_SAFE_FLOORS = {
+  /** 1920 - SAFE.bottom (1629): clears the progress bar. */
+  bottomInset: 291,
+  /** SAFE.left. */
+  left: 51,
+  /** 1080 - SAFE.rightBelowButtons (886): clears the action-button column. */
+  rightInset: 194,
+};
+
+function clampCaptionToSafeZone(caption, warnings) {
+  const out = { ...caption };
+  for (const [key, floor] of Object.entries(CAPTION_SAFE_FLOORS)) {
+    if (out[key] !== undefined && out[key] < floor) {
+      warnings.push(
+        `brand.json: caption.${key} = ${out[key]} would put the karaoke text under TikTok's own UI; ` +
+          `clamped to ${floor}.`,
+      );
+      out[key] = floor;
+    }
+  }
+  return out;
 }
 
 /**

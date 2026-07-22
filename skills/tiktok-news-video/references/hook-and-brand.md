@@ -97,12 +97,38 @@ the spec. `getBrand(slug, workspaceDir)` looks up a single brand by slug.
 Multi-brand is a pipeline-level concern: `spec.json` always carries exactly
 one already-resolved `brandKit`, and Remotion never knows others exist.
 
+## Karaoke geometry per brand
+
+`brand.json` may carry an optional `caption` block. Every key inside is also
+optional — only what the brand sets is overridden, everything else keeps the
+house default from `CAPTION` in `remotion/src/layout.ts`:
+
+```json
+"caption": { "fontSize": 44, "bottomInset": 400, "wordGap": 14 }
+```
+
+Allowed: `left`, `rightInset`, `bottomInset`, `fontSize`, `lineHeight`,
+`wordGap`. **An unknown key makes the brand invalid**, on purpose — a
+misspelled `botomInset` would otherwise be silently ignored and read as "the
+feature doesn't work".
+
+The three position keys are **clamped to TikTok's safe zone** by
+`build-spec.mjs`, which pushes a warning into `spec.warnings` naming the value
+and what it became. Report those warnings to the user: the author cannot see
+the problem in the rendered MP4, only on the platform, after posting.
+
 ## Brand scope limits
 
-Today brands vary by **color, badge text, and the badge mark**. Typography and
-every text position are still house-wide constants in `remotion/src/layout.ts`
-— see `text-layout.md`.
+Today brands vary by **color, badge text, badge mark, hook background, and
+karaoke geometry**. Still house-wide in `remotion/src/layout.ts`: the font
+family and every hook-card position — see `text-layout.md`.
 
-That set is meant to grow (per-brand caption font and position are the next
-slices), but one key at a time, each with a stated default. A brand key that
-lands without a default is a bug: it breaks every folder already handed out.
+The font family is deliberately not per-brand *yet*. `layout.ts` exists so the
+hook headline and the captions can never load different families again, so a
+per-brand font has to move the headline, badge, and captions together, and
+needs a font-loading gate (a frame rendered before the font arrives shows the
+fallback). That is its own slice.
+
+The set is meant to grow, but one key at a time, each with a stated default. A
+brand key that lands without a default is a bug: it breaks every folder
+already handed out.

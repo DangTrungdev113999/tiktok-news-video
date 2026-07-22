@@ -2,7 +2,8 @@ import React from "react";
 import type { CSSProperties } from "react";
 import { AbsoluteFill, useCurrentFrame } from "remotion";
 import type { CaptionLine } from "./spec-types";
-import { BRAND_FONT_FAMILY, CAPTION } from "./layout";
+import { BRAND_FONT_FAMILY, resolveCaption } from "./layout";
+import type { CaptionOverrides } from "./layout";
 
 /**
  * ONE global karaoke-caption overlay, rendered outside any per-scene
@@ -28,6 +29,12 @@ import { BRAND_FONT_FAMILY, CAPTION } from "./layout";
  */
 export interface CaptionsProps {
   lines: CaptionLine[];
+  /**
+   * This brand's caption geometry, or nothing. Optional because captions
+   * render on ordinary scenes, which know nothing about a brand kit -- and a
+   * spec with no hook scene carries no brandKit at all.
+   */
+  caption?: CaptionOverrides | null;
 }
 
 function findActiveLine(lines: CaptionLine[], frame: number): CaptionLine | null {
@@ -39,43 +46,48 @@ function findActiveLine(lines: CaptionLine[], frame: number): CaptionLine | null
   return null;
 }
 
-// Bottom-anchored so a two-line group grows UPWARD; the bottom edge (and so
-// the clearance from TikTok's covered band) stays constant either way.
-const outerStyle: CSSProperties = {
-  position: "absolute",
-  left: CAPTION.left,
-  right: CAPTION.rightInset,
-  bottom: CAPTION.bottomInset,
-  display: "flex",
-  justifyContent: "center",
-};
-
-const innerStyle: CSSProperties = {
-  display: "flex",
-  flexWrap: "wrap",
-  justifyContent: "center",
-  alignItems: "flex-end",
-  columnGap: CAPTION.wordGap,
-  rowGap: 0,
-  maxWidth: "100%",
-};
-
-const wordBaseStyle: CSSProperties = {
-  fontFamily: BRAND_FONT_FAMILY,
-  fontWeight: 700,
-  fontSize: CAPTION.fontSize,
-  lineHeight: CAPTION.lineHeight,
-  textTransform: "uppercase",
-  WebkitTextStroke: "6px rgba(0,0,0,0.85)",
-  paintOrder: "stroke fill" as CSSProperties["paintOrder"],
-  textShadow: "0 2px 10px rgba(0,0,0,0.45)",
-  display: "inline-block",
-};
-
-export const Captions: React.FC<CaptionsProps> = ({ lines }) => {
+export const Captions: React.FC<CaptionsProps> = ({ lines, caption }) => {
   const frame = useCurrentFrame();
+  // House defaults with this brand's overrides on top. Positions arrived
+  // already clamped to TikTok's safe zone (build-spec.mjs does that, and
+  // warns) -- re-clamping here would be a second place to disagree about
+  // where the floor is.
+  const c = resolveCaption(caption);
   const active = findActiveLine(lines, frame);
   if (!active) return null;
+
+  // Bottom-anchored so a two-line group grows UPWARD; the bottom edge (and so
+  // the clearance from TikTok's covered band) stays constant either way.
+  const outerStyle: CSSProperties = {
+    position: "absolute",
+    left: c.left,
+    right: c.rightInset,
+    bottom: c.bottomInset,
+    display: "flex",
+    justifyContent: "center",
+  };
+
+  const innerStyle: CSSProperties = {
+    display: "flex",
+    flexWrap: "wrap",
+    justifyContent: "center",
+    alignItems: "flex-end",
+    columnGap: c.wordGap,
+    rowGap: 0,
+    maxWidth: "100%",
+  };
+
+  const wordBaseStyle: CSSProperties = {
+    fontFamily: BRAND_FONT_FAMILY,
+    fontWeight: 700,
+    fontSize: c.fontSize,
+    lineHeight: c.lineHeight,
+    textTransform: "uppercase",
+    WebkitTextStroke: "6px rgba(0,0,0,0.85)",
+    paintOrder: "stroke fill" as CSSProperties["paintOrder"],
+    textShadow: "0 2px 10px rgba(0,0,0,0.45)",
+    display: "inline-block",
+  };
 
   return (
     <AbsoluteFill style={{ pointerEvents: "none" }}>
@@ -88,7 +100,7 @@ export const Captions: React.FC<CaptionsProps> = ({ lines }) => {
                 key={`${w.startFrame}-${i}`}
                 style={{
                   ...wordBaseStyle,
-                  color: isRead ? CAPTION.readColor : CAPTION.unreadColor,
+                  color: isRead ? c.readColor : c.unreadColor,
                 }}
               >
                 {w.text}

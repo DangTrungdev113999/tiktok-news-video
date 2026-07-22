@@ -53,7 +53,9 @@ export const MainVideo: React.FC<VideoSpec> = ({
         </Sequence>
       ))}
 
-      {captions && captions.length > 0 ? <Captions lines={captions} /> : null}
+      {captions && captions.length > 0 ? (
+        <Captions lines={captions} caption={brandKit?.caption} />
+      ) : null}
 
       {narrationAudioPath ? <MediaAudio src={staticFile(narrationAudioPath)} name="narration" /> : null}
 

@@ -11,6 +11,8 @@
  * the file physically lives in the repo.
  */
 
+import type { CaptionOverrides } from "./layout";
+
 export type AssetType = "image" | "video";
 
 export type Effect = "pan" | "zoom" | "diagonal" | "rotate" | "passthrough" | "slide";
@@ -231,6 +233,12 @@ export interface BrandKit {
    * whether it suited the channel or not.
    */
   logoPath?: string | null;
+  /**
+   * Per-brand karaoke caption geometry, containing only the keys this brand
+   * actually set. Merged over CAPTION by resolveCaption() in ./layout --
+   * the defaults deliberately live in exactly one place.
+   */
+  caption?: CaptionOverrides | null;
   /** Ribbon badge text, e.g. "Mật Vụ Tác Quyền". */
   badgeLabel: string;
   /** 3-stop gradient for the badge background, e.g. ["#FF9A3D", "#FF6A00", "#F04E00"]. */

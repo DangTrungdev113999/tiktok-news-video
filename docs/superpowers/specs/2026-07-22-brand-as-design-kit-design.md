@@ -109,9 +109,48 @@ Verified by rendering three ways: the real brand (unchanged photo card), a
 brand whose background is a hand-written SVG (gradient + dot screen +
 waveform), and a brand folder holding nothing but `brand.json`.
 
-### Later slices (not this change)
+## Slice 3: karaoke geometry (done)
 
-1. Karaoke: `captionFontSize`, `captionBottomInset`, `captionReadColor`, …
-   threaded from `brand.json` through `layout.ts` into `Captions.tsx`.
+`brand.json` gained an optional `caption` block: `left`, `rightInset`,
+`bottomInset`, `fontSize`, `lineHeight`, `wordGap`. Every key optional.
+
+**Defaults live in exactly one place.** `brand-kit.mjs` passes through only the
+keys a brand actually set; `resolveCaption()` in `layout.ts` merges them over
+`CAPTION`. If the node side filled in defaults instead, a later edit to
+`CAPTION` would silently disagree with a stale copy — surfacing only as a
+video that looks slightly off, with nothing pointing back here.
+
+**An unknown key is an error**, not a shrug. `botomInset` would otherwise be
+ignored in silence, and the brand author's natural conclusion is "the feature
+is broken", not "I misspelled it". It fails at Step 1 with the key quoted.
+
+**Positions are clamped, not rejected.** Out-of-zone is renderable; it just
+renders where TikTok's own UI covers it — and the author cannot see that in
+the MP4, only on the platform, after posting. So `build-spec.mjs` clamps to
+the `SAFE` floors and pushes a warning naming the value and its replacement.
+Rejecting instead would turn "50px too low" into "the employee gets no video
+and cannot fix it", since only the admin authors brands.
+
+Verified: a brand overriding `fontSize`/`bottomInset`/`wordGap` renders visibly
+larger and higher; one with all three positions out of bounds produced three
+clamps and three warnings; the real brand (no `caption` key) renders unchanged;
+a misspelled key lands in `invalid[]` with the allowed list.
+
+### Deliberately not in this slice: the font family
+
+The user asked for it, and it is the next slice rather than this one.
+`layout.ts` exists so the hook headline and the captions can never load
+different families again — the Baloo2/Inter drift it was written to kill. A
+per-brand font therefore has to move headline, badge, and captions together;
+it is brand-wide typography, not caption geometry.
+
+It also needs a font-loading gate (`delayRender`/`continueRender` around
+`FontFace.load()`), because a frame rendered before the font arrives shows the
+fallback — a determinism risk that does not belong bundled into a pure-data
+change.
+
+### Later slices
+
+1. Per-brand font family, per the above.
 2. Whatever comes next — the point of the optional-with-default rule is that
    this list never has to be finished up front.

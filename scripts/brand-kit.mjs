@@ -66,6 +66,23 @@ const HOOK_BG_FILENAMES = [
  * gets its own mark; one that doesn't keeps the old glyph and needs no edits.
  */
 const LOGO_FILENAMES = ['logo.svg', 'logo.png'];
+/**
+ * Karaoke caption geometry a brand may override. OPTIONAL, and partial: only
+ * the keys a brand actually sets travel in the spec, and the renderer merges
+ * them over CAPTION in remotion/src/layout.ts.
+ *
+ * Partial on purpose. Copying the default numbers into this file would mean
+ * every future tweak to layout.ts silently disagrees with a stale copy on the
+ * node side -- and the disagreement would only show up as a video that looks
+ * subtly wrong, which is the hardest kind of bug to trace back here.
+ *
+ * NOT in this list: font family. That is brand-wide typography, not caption
+ * geometry -- layout.ts exists precisely so the headline and the captions can
+ * never load different families again, so a per-brand font has to move all of
+ * them at once and needs a font-loading gate. Separate slice.
+ */
+const CAPTION_KEYS = ['left', 'rightInset', 'bottomInset', 'fontSize', 'lineHeight', 'wordGap'];
+
 const REQUIRED_MANIFEST_FIELDS = [
   'displayName',
   'badgeLabel',
@@ -102,6 +119,8 @@ async function resolveBrandFolder(brandDir, slug) {
     throw new Error(`${MANIFEST_FILENAME} missing field(s): ${missing.join(', ')}`);
   }
 
+  const caption = resolveCaptionOverrides(manifest.caption);
+
   // Optional files are probed, never required: a missing one yields null and
   // the renderer falls back, rather than knocking the whole brand out of the
   // picker.
@@ -120,7 +139,48 @@ async function resolveBrandFolder(brandDir, slug) {
     headlineStroke: manifest.headlineStroke,
     hookBgPath,
     logoPath,
+    caption,
   };
+}
+
+/**
+ * Validate `brand.json`'s optional `caption` block and return only the keys it
+ * actually sets (or null when there is no block at all).
+ *
+ * An unknown key is an ERROR, not a shrug. A brand author who writes
+ * `botomInset` otherwise gets a video that ignores the setting with no
+ * explanation anywhere, and the natural conclusion is "the feature doesn't
+ * work" rather than "I misspelled it". Failing here surfaces it at Step 1,
+ * with the misspelling quoted, before anything has been rendered or paid for.
+ *
+ * Position values are NOT bounds-checked here -- see build-spec.mjs, which
+ * clamps them to TikTok's safe zone and warns. Out of bounds is renderable;
+ * it just renders somewhere the platform's own UI covers up.
+ */
+function resolveCaptionOverrides(raw) {
+  if (raw === undefined || raw === null) return null;
+  if (typeof raw !== 'object' || Array.isArray(raw)) {
+    throw new Error(`${MANIFEST_FILENAME}: "caption" must be an object`);
+  }
+
+  const unknown = Object.keys(raw).filter((k) => !CAPTION_KEYS.includes(k));
+  if (unknown.length > 0) {
+    throw new Error(
+      `${MANIFEST_FILENAME}: unknown caption key(s) ${unknown.map((k) => `"${k}"`).join(', ')} ` +
+        `(allowed: ${CAPTION_KEYS.join(', ')})`,
+    );
+  }
+
+  const out = {};
+  for (const key of CAPTION_KEYS) {
+    if (raw[key] === undefined) continue;
+    const value = raw[key];
+    if (typeof value !== 'number' || !Number.isFinite(value) || value <= 0) {
+      throw new Error(`${MANIFEST_FILENAME}: caption.${key} must be a positive number (got ${JSON.stringify(value)})`);
+    }
+    out[key] = value;
+  }
+  return Object.keys(out).length > 0 ? out : null;
 }
 
 /**
