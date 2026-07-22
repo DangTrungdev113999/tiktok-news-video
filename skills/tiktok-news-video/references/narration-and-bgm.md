@@ -21,6 +21,14 @@ Run `node $CODE_ROOT/scripts/voice-library.mjs list`.
   plus a final option **"thêm giọng mới"**. Whatever they pick, pass its
   `voice_id` to `synthesizeScript` as `voiceId` — always explicitly, never by
   letting the fallback decide.
+  - `list` now prints a Vietnamese-verification line under any at-risk voice:
+    a loud `⚠️ chưa xác nhận đọc được tiếng Việt` for one ElevenLabs explicitly
+    did not verify, or a quiet `(chưa kiểm chứng tiếng Việt)` for one saved
+    before the check existed (or when the check couldn't run). **Relay that
+    warning when you present the choice** — the verdict is stored at add time so
+    it survives with no key or network here, and it is the guard against
+    re-picking the cross-lingual voice this project once shipped. A clean voice
+    prints no such line.
 - **Library empty** → two options, not an open prompt:
   1. `Hạnh — nữ trẻ giọng Bắc, rõ chữ, hợp tin tức` (`pGapy9MNHCukzJtjavF0`),
      the one voice this project has actually auditioned;
@@ -121,10 +129,18 @@ speech, not the extended hold. Pass `words[]` straight through.
 
 Run `scripts/bgm-library.mjs list`.
 
-- Saved tracks exist → show them as options plus "khác (tải file mới)".
+- Saved tracks exist → show them as options plus "khác (tải file mới)". Each
+  track now lists its **mô tả** (mood note) and measured **độ to (LUFS)**;
+  relay both so the user picks by feel, not by filename. A track flagged
+  `⚠️ hơi nhỏ` is quiet-mastered and will sink under the voice at the fixed 25%
+  mix — surface that flag rather than letting the user discover silence in the
+  render. (Tracks saved before this metadata existed show `(chưa có mô tả)` /
+  `(chưa đo)`; re-saving enriches them.)
 - Library empty → ask directly whether the user has a BGM file.
-- New file provided → ask what to name it, then
-  `scripts/bgm-library.mjs save <path> <name>`.
+- New file provided → ask what to name it **and for a one-line mood note**, then
+  `scripts/bgm-library.mjs save <path> <name> <mô tả>`. The save measures the
+  track's loudness and reports it; a `⚠️ hơi nhỏ` there is your cue to warn the
+  user before rendering.
 - User declines BGM entirely → proceed without it (no `bgmAudioPath` in the
   spec).
 

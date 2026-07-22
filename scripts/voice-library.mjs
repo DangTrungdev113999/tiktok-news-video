@@ -221,22 +221,30 @@ export async function describeVoice(voiceId, apiKey) {
  * at the same voice would make the pick list lie about how many choices there
  * are.
  *
- * @param {{id: string, label: string}} voice
+ * `vi` records ElevenLabs' Vietnamese verdict at add time so the PICK list can
+ * warn later without a network round-trip (and without a key on this machine).
+ * It is deliberately tri-state: `true` verified, `false` explicitly not
+ * verified, `null` when the check could not run (no key, no network, HTTP
+ * error). `null` is NOT `false` — an unreachable API is not evidence the voice
+ * is bad, the same principle `describeVoice` already states.
+ *
+ * @param {{id: string, label: string, vi?: (boolean|null)}} voice
  * @param {string} [workspaceDir]
  */
-export async function addVoice({ id, label }, workspaceDir = getWorkspaceDir()) {
+export async function addVoice({ id, label, vi = null }, workspaceDir = getWorkspaceDir()) {
   const cleanId = String(id ?? '').trim();
   if (!cleanId) throw new Error('voice id must not be empty');
   const cleanLabel = String(label ?? '').trim();
   if (!cleanLabel) throw new Error('voice label must not be empty — mô tả là thứ duy nhất giúp người sau nhận ra giọng này');
+  const viStatus = vi === true ? true : vi === false ? false : null;
 
   const voices = (await readVoicesFile(workspaceDir)) ?? (await listVoices(workspaceDir));
   const at = voices.findIndex((v) => v.id === cleanId);
-  if (at >= 0) voices[at] = { id: cleanId, label: cleanLabel };
-  else voices.push({ id: cleanId, label: cleanLabel });
+  if (at >= 0) voices[at] = { id: cleanId, label: cleanLabel, vi: viStatus };
+  else voices.push({ id: cleanId, label: cleanLabel, vi: viStatus });
 
   await writeVoicesFile(workspaceDir, voices);
-  return { id: cleanId, label: cleanLabel, path: voicesPath(workspaceDir) };
+  return { id: cleanId, label: cleanLabel, vi: viStatus, path: voicesPath(workspaceDir) };
 }
 
 // ---------------------------------------------------------------------------
@@ -259,7 +267,19 @@ if (isMain()) {
     if (voices.length === 0) {
       console.log('(chưa có giọng nào trong thư viện)');
     } else {
-      voices.forEach((v, i) => console.log(`${i + 1}. ${v.label}\n   voice_id: ${v.id}`));
+      voices.forEach((v, i) => {
+        console.log(`${i + 1}. ${v.label}\n   voice_id: ${v.id}`);
+        // Surface the Vietnamese verdict at PICK time, not only at add time.
+        // A voice saved with the ⚠️ (add stores it but does not block) must not
+        // reappear here looking clean -- that is exactly how this project once
+        // shipped an Indonesian-cloned voice reading Vietnamese.
+        if (v.vi === false) {
+          console.log('   ⚠️  ElevenLabs chưa xác nhận giọng này đọc được tiếng Việt');
+        } else if (v.vi !== true) {
+          // null (check couldn't run) or legacy rows saved before this field.
+          console.log('   (chưa kiểm chứng tiếng Việt)');
+        }
+      });
     }
   } else if (cmd === 'check') {
     const [id] = rest;
@@ -296,8 +316,12 @@ if (isMain()) {
       }
     }
 
+    // Tri-state: unverified check -> null (couldn't run, not a verdict);
+    // otherwise ElevenLabs' own vi verdict. Persisted so `list` can warn later
+    // without a key or network.
+    const vi = info.unverified ? null : !!info.speaksVietnamese;
     try {
-      const saved = await addVoice({ id, label: labelParts.join(' ') });
+      const saved = await addVoice({ id, label: labelParts.join(' '), vi });
       console.log(`[voice-library] đã lưu "${saved.label}" (${saved.id}) -> ${saved.path}`);
     } catch (err) {
       console.error(`[voice-library] ERROR: ${err.message}`);

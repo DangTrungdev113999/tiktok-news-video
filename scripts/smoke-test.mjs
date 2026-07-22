@@ -83,8 +83,9 @@ async function generateBgmFixture() {
     run(binaryPath('ffmpeg'), ['-y', '-f', 'lavfi', '-i', 'sine=frequency=220:duration=20', tmpBgm]);
   }
   // Explicit workspaceDir=REPO_ROOT: smoke-test is self-contained and must
-  // not depend on (or pollute) the real user-configured workspace.
-  const { destPath } = await saveBgm(tmpBgm, '_smoke-test-bgm', REPO_ROOT);
+  // not depend on (or pollute) the real user-configured workspace. The empty
+  // string is the `description` arg -- workspaceDir is now the 4th positional.
+  const { destPath } = await saveBgm(tmpBgm, '_smoke-test-bgm', '', REPO_ROOT);
   return path.relative(REPO_ROOT, destPath);
 }
 
