@@ -170,9 +170,11 @@ Step 2 is where the user's money goes.
 
 These are settled decisions. Don't reopen them mid-run:
 
-- **No second caption style** and no per-word styling variety — the single
-  `Captions.tsx` look is the whole spec. Captions cover every scene except the
-  hook scene.
+- **Exactly two caption styles, chosen once per video at Step 3b** —
+  `cumulative` (`Captions.tsx`) and `popup` (`PopupCaptions.tsx`). Don't add a
+  third or per-word styling variety without a real request; see
+  `text-layout.md`. Captions cover every scene except the hook scene, in
+  either style.
 - **No script rewriting.** The user's text is spoken as typed.
 - **No BGM ducking** — constant 25% is the whole spec.
 - **No host-app chrome** baked into the hook card (search bars, play buttons,

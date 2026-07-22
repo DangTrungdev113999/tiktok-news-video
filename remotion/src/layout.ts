@@ -165,7 +165,16 @@ export const HEADLINE = {
  * on 2026-07-20 and the headline kept its own.
  */
 export const CAPTION = {
-  left: 60,
+  /**
+   * Matches rightInset so the box is centered on the FULL 1080 frame, not
+   * just the button-column-safe region -- justifyContent: center in
+   * Captions.tsx centers words within this box, and an asymmetric box (this
+   * was 60 against a 194 rightInset) put that visual center 67px left of the
+   * frame's true center. Symmetric insets cost width (826px -> 692px, more
+   * two-line wraps) but that is the tradeoff for text that actually reads as
+   * centered.
+   */
+  left: 194,
   rightInset: 194,
   /** 1920 - 350 = 1570 bottom edge -- above SAFE.bottom (1629). */
   bottomInset: 350,

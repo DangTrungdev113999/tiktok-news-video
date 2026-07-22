@@ -195,6 +195,16 @@ export interface SceneSpec {
   isHook?: boolean;
   /** Headline text shown by the hook-card overlay. Only used when isHook is true. */
   hookHeadline?: string;
+  /**
+   * The hook is HELD over this (non-hook) scene: the branded hook card stays
+   * pinned in the bottom half while this scene's image is fitted into the top
+   * half, and the scene's karaoke captions are suppressed. Used to keep the
+   * hook visible from the hook line through to the end of the screen that
+   * follows it. `hookHeadline` is copied onto these scenes too so the pinned
+   * card can render the same headline. Off by default -- an ordinary scene
+   * fills the whole frame and shows captions as usual.
+   */
+  heldHook?: boolean;
 }
 
 /** One karaoke-caption word, timed in absolute composition frames (not scene-local). */
@@ -276,6 +286,23 @@ export interface VideoSpec {
   scenes: SceneSpec[];
   /** Karaoke caption lines, flattened across all non-hook scenes, absolute-frame timed. */
   captions?: CaptionLine[];
+  /**
+   * Which karaoke look to render `captions` with. "cumulative" (default,
+   * used when absent so specs from before this field existed still render
+   * exactly as they used to): a whole sentence-ish group on screen at once,
+   * words turning gold and staying gold as they're spoken. "popup": small
+   * 2-3 word groups, only the currently-spoken word highlighted, chosen once
+   * per video (see MainVideo.tsx / PopupCaptions.tsx).
+   */
+  captionStyle?: "cumulative" | "popup";
+  /**
+   * SCREEN indices (author's screen order, not shot order) that carry no
+   * karaoke captions: the hook screen and any screen the hook is held over.
+   * The renderer ignores this; it exists so verify-captions.mjs excludes the
+   * same screens from the script side when comparing captions to the author's
+   * text. Absent on older specs, where only the hook (index 0) is skipped.
+   */
+  captionSkipScreens?: number[];
   /** Present only when a scene has isHook: true. */
   brandKit?: BrandKit;
   /**

@@ -131,3 +131,30 @@ Run `scripts/bgm-library.mjs list`.
 BGM always mixes at a constant **25% volume, no ducking**, looped to the full
 video length. Never ask about volume — that's fixed by the design spec. Do not
 add ducking; constant 25% is the whole spec.
+
+## Step 3b — Karaoke caption style (always asked)
+
+Two looks exist, both driven by the same word-level timing from Step 2 — the
+choice only changes how `remotion/src/layout.ts`'s `CAPTION` box renders it,
+never the position/size, which stays whatever the brand kit resolves to
+(`text-layout.md`).
+
+Ask plainly, every run, after BGM:
+
+- **cumulative** (mặc định / `Captions.tsx`) — the whole spoken group stays on
+  screen together; each word turns gold the moment it's spoken and stays gold.
+  Reads as a sentence filling in.
+- **popup** (`PopupCaptions.tsx`) — small 2-3 word groups, one on screen at a
+  time, cutting straight to the next group. Only the word being spoken right
+  now is gold and slightly enlarged; every other word in the group — spoken or
+  not — is plain white. Faster, punchier rhythm; better for short, high-energy
+  hooks.
+
+Pass the answer straight through as `captionStyle: "cumulative" | "popup"` to
+`buildSpec`/`buildSpecToFile` (see `build-and-render.md`) — omit the field
+entirely only if you're reusing an old flow that predates this option, since
+`buildSpec` already defaults to `"cumulative"` when it's absent.
+
+This is a per-video editorial choice, not a brand identity trait — it does
+**not** live in `brand.json` alongside colours/badge text, and it is not
+skipped just because the channel has rendered one style before.

@@ -26,6 +26,36 @@ video itself.
 
 For the card's typography and geometry, see `text-layout.md`.
 
+### Holding the hook over the next screen(s)
+
+By default the hook card lasts exactly the hook line, then the run cuts to
+full-frame image scenes. A scene can instead be marked `heldHook: true` (with
+the same `hookHeadline`), which keeps the branded card **pinned in the bottom
+half** while that scene's image is fitted into the **top half**, and suppresses
+that scene's karaoke captions. Use it to keep the hook visible from the hook
+line through to the end of the screen that follows it, when the two read as one
+continuous opening thought.
+
+- It is **off by default** — an ordinary scene fills the whole frame and shows
+  captions. Set it only on the screen(s) the hook should hold over, always the
+  ones immediately after the hook.
+- The bottom keeps the **real hook card** (`HookCard`, the same brand cover +
+  badge + headline as the hook scene) — not a flat gradient panel, which read
+  as a bare orange slab. The image (`remotion/src/HeldHookScene.tsx`) is
+  `contain`-fitted (not cropped) with a blurred pad behind it, rendered OVER
+  the card in the top region with its bottom edge faded so it blooms into the
+  card.
+- Captions for a held screen are **not emitted**, and `build-spec.mjs` records
+  every caption-free screen index in `spec.captionSkipScreens` so
+  `verify-captions.mjs` excludes the same screens from the script side. Without
+  that the gate would fail, short by the held screen's words.
+- The badge, date and headline sit entirely in the bottom half in BOTH the full
+  and split cards, so a scene crossing from the hook into a held screen keeps
+  them from shifting — only the top (cover → content image) changes.
+
+Added 2026-07-22 on the author's request ("giữ ảnh thẻ hook, các ảnh cho nằm
+nửa trên phía ảnh thẻ").
+
 ## Resolving the brand kit (the conditional user pause)
 
 `$WORKSPACE_DIR/brand/<slug>/` holds one self-contained brand kit. Brands are

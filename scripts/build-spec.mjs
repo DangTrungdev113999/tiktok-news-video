@@ -132,7 +132,7 @@ export function classifyAsset(probe, occurrence = { landscape: 0, portrait: 0, s
 // words out with flex-wrap), so these bounds describe a whole group, not a
 // single rendered row. Sizing (2026-07-20, see
 // docs/superpowers/specs/2026-07-20-safe-zone-typography-design.md): the
-// caption box is 1080 - 60 - 194 = 826px wide. At the original Oswald 700 /
+// caption box was 1080 - 60 - 194 = 826px wide. At the original Oswald 700 /
 // 54px that fit roughly 34 uppercase characters per rendered row -- ~68 over
 // two rows -- and 52 left real slack for wide words and the word gap.
 //
@@ -142,6 +142,13 @@ export function classifyAsset(probe, occurrence = { landscape: 0, portrait: 0, s
 // many words sit on screen at once, which is reading RHYTHM, and the author
 // asked for smaller text, not for more of it per group. Raising them is a
 // separate decision with its own look.
+//
+// 2026-07-22: `left` moved from 60 to 194 (matching rightInset) to actually
+// center the box on the frame -- see layout.ts's CAPTION comment. The box is
+// now 1080 - 194 - 194 = 692px, ~16% narrower, so a 52-character group still
+// comfortably fits its two rows (roughly 40 chars/row now, ~80 over two rows)
+// but wraps to a second row sooner than it used to. Still no risk of a third
+// row at these bounds.
 const CAPTION_MAX_WORDS_PER_LINE = 9;
 const CAPTION_MAX_CHARS_PER_LINE = 52;
 
@@ -184,6 +191,46 @@ function chunkWordsIntoCaptionLines(words) {
     })),
     startFrame: Math.round(lineWords[0].startSec * FPS),
     endFrame: Math.round(lineWords[lineWords.length - 1].endSec * FPS),
+  }));
+}
+
+/** Fixed group size for the "popup" caption style -- see chunkWordsIntoPopupCaptionLines. */
+const POPUP_GROUP_SIZE = 3;
+
+/**
+ * Group a scene's words into fixed 3-word "popup" groups (PopupCaptions.tsx:
+ * one small group on screen at a time, the current word highlighted). Unlike
+ * `chunkWordsIntoCaptionLines`, this has nothing to do with box width -- a
+ * 2-3 word group always fits -- so the only rule is group size.
+ *
+ * A trailing group of exactly 1 word (total words not divisible by 3, minus
+ * the case that already lands on 2) reads as an orphan on screen by itself,
+ * so it's folded into the group before it: the last two 3-word groups become
+ * two 2-word groups instead of a 3 and a 1. E.g. 7 words -> [3, 2, 2], not
+ * [3, 3, 1].
+ * @param {Array<{text:string, startSec:number, endSec:number}>} words
+ * @returns {import('../remotion/src/spec-types.js').CaptionLine[]}
+ */
+function chunkWordsIntoPopupCaptionLines(words) {
+  const groups = [];
+  for (let i = 0; i < words.length; i += POPUP_GROUP_SIZE) {
+    groups.push(words.slice(i, i + POPUP_GROUP_SIZE));
+  }
+
+  const last = groups[groups.length - 1];
+  if (groups.length >= 2 && last.length === 1) {
+    const merged = [...groups[groups.length - 2], ...last];
+    groups.splice(groups.length - 2, 2, merged.slice(0, 2), merged.slice(2));
+  }
+
+  return groups.map((groupWords) => ({
+    words: groupWords.map((w) => ({
+      text: w.text,
+      startFrame: Math.round(w.startSec * FPS),
+      endFrame: Math.round(w.endSec * FPS),
+    })),
+    startFrame: Math.round(groupWords[0].startSec * FPS),
+    endFrame: Math.round(groupWords[groupWords.length - 1].endSec * FPS),
   }));
 }
 
@@ -839,8 +886,23 @@ function todayInVietnam(now = new Date()) {
  * @param {object} args
  * @param {string|null} [args.hookDate] - overrides the publish date string;
  *   pass null to suppress the plate even for a brand that opted in.
+ * @param {"cumulative"|"popup"} [args.captionStyle] - which karaoke look
+ *   PopupCaptions.tsx/Captions.tsx should render `captions` with. Defaults to
+ *   "cumulative" -- the house look every spec used before this option
+ *   existed. Chosen once per video (the skill asks), not per brand: it's an
+ *   editorial pick about this video's captions, not a channel identity trait
+ *   like the brand's colours.
  */
-export async function buildSpec({ scenes, workspaceDir, narrationAudioPath, bgmAudioPath, bgmVolume, brandKit, hookDate }) {
+export async function buildSpec({
+  scenes,
+  workspaceDir,
+  narrationAudioPath,
+  bgmAudioPath,
+  bgmVolume,
+  brandKit,
+  hookDate,
+  captionStyle = 'cumulative',
+}) {
   if (!Array.isArray(scenes) || scenes.length === 0) {
     throw new Error('buildSpec requires a non-empty scenes[] array');
   }
@@ -848,6 +910,15 @@ export async function buildSpec({ scenes, workspaceDir, narrationAudioPath, bgmA
   // renderer -- these are things that still produce a video, but not the video
   // the author asked for.
   const warnings = [];
+
+  // Which SCREEN indices carry no karaoke captions -- the hook and any screen
+  // the hook is held over. Captured HERE, in screen order, before the screens
+  // are flattened into shots (after which the original screen index is gone),
+  // so verify-captions.mjs knows which script screens to exclude when it checks
+  // the captions against the author's text. See references/build-and-render.md.
+  const captionSkipScreens = scenes
+    .map((screen, i) => (screen.isHook || screen.heldHook ? i : -1))
+    .filter((i) => i >= 0);
 
   // Screens in -> shots out. One screen may hold several assets; everything
   // below this line works one asset at a time.
@@ -949,12 +1020,20 @@ export async function buildSpec({ scenes, workspaceDir, narrationAudioPath, bgmA
       startFrame,
       durationInFrames,
       ...(scene.isHook ? { isHook: true, hookHeadline: scene.hookHeadline } : {}),
+      // A held-hook scene keeps the pinned card (needs the same headline) and
+      // renders its image in the top half -- see spec-types' `heldHook`.
+      ...(scene.heldHook ? { heldHook: true, hookHeadline: scene.hookHeadline } : {}),
     });
 
-    // Karaoke captions: every scene EXCEPT the hook scene (it gets the
-    // hook-card overlay with its own static headline instead).
-    if (!scene.isHook && Array.isArray(scene.words) && scene.words.length > 0) {
-      captionLines.push(...chunkWordsIntoCaptionLines(scene.words));
+    // Karaoke captions: every scene EXCEPT the hook scene and any scene the
+    // hook is HELD over -- both show the hook card's static headline instead of
+    // captions, so emitting captions under them would collide with it.
+    if (!scene.isHook && !scene.heldHook && Array.isArray(scene.words) && scene.words.length > 0) {
+      captionLines.push(
+        ...(captionStyle === 'popup'
+          ? chunkWordsIntoPopupCaptionLines(scene.words)
+          : chunkWordsIntoCaptionLines(scene.words)),
+      );
     }
   }
 
@@ -985,7 +1064,11 @@ export async function buildSpec({ scenes, workspaceDir, narrationAudioPath, bgmA
     spec.bgmAudioPath = toPosix(bgmAudioPath);
     spec.bgmVolume = bgmVolume ?? DEFAULT_BGM_VOLUME;
   }
-  if (captionLines.length > 0) spec.captions = captionLines;
+  if (captionLines.length > 0) {
+    spec.captions = captionLines;
+    if (captionStyle === 'popup') spec.captionStyle = 'popup';
+  }
+  if (captionSkipScreens.length > 0) spec.captionSkipScreens = captionSkipScreens;
   if (brandKit?.caption) {
     brandKit = { ...brandKit, caption: clampCaptionToSafeZone(brandKit.caption, warnings) };
   }

@@ -56,19 +56,30 @@ the badge.
 
 ## Captions
 
-One global `Captions.tsx` outside any per-scene `<Sequence>`, driven by
-absolute-frame word timing from `build-spec.mjs`'s chunking.
+One global overlay outside any per-scene `<Sequence>`, driven by
+absolute-frame word timing from `build-spec.mjs`'s chunking. Two components
+render it, chosen once per video at Step 3b (`narration-and-bgm.md`) via
+`VideoSpec.captionStyle`; both read the SAME `CAPTION` geometry from
+`layout.ts`, so position/size never differs between them:
 
-Style is **cumulative read-highlight**: a word turns gold the moment its own
-speech starts and stays gold; unread words stay white. NOT a per-word pop or
-zoom — that was tried and corrected 2026-07-18.
-
-A caption group may wrap onto **two** rendered lines. `build-spec.mjs`'s
-bounds (9 words / 52 chars) describe the whole group; the rendered row count
-follows from the box width via `flex-wrap`.
+- **`Captions.tsx`** (`captionStyle: "cumulative"`, the default when the field
+  is absent). A word turns gold the moment its own speech starts and stays
+  gold; unread words stay white — the whole spoken group holds on screen
+  together. Chunked by `chunkWordsIntoCaptionLines` (9 words / 52 chars per
+  group, may wrap onto **two** rendered lines via `flex-wrap`).
+- **`PopupCaptions.tsx`** (`captionStyle: "popup"`, added 2026-07-22). Small
+  fixed 3-word groups (`chunkWordsIntoPopupCaptionLines` in `build-spec.mjs` —
+  a trailing 1-word orphan is folded into the previous group as 2+2 instead),
+  one group on screen at a time, cutting straight to the next with no
+  fade/scale transition (tried and removed the same day). Highlight is
+  momentary, not cumulative: only the word in its own `[startFrame, endFrame)`
+  is gold and scaled ~1.12×; every other word in the group, spoken or not,
+  reads plain white.
 
 ## Scope guard
 
-Karaoke captions are in scope for every scene EXCEPT the hook scene. Don't add
-per-word styling variety or a second caption style — the single `Captions.tsx`
-look is the whole spec.
+Karaoke captions are in scope for every scene EXCEPT the hook scene, in
+whichever of the two styles above the run picked. Don't add a third style or
+per-word styling variety inside either component without a real request —
+extend `layout.ts`'s shared `CAPTION` geometry first if what's needed is a
+position/size change, since both components already read from it.

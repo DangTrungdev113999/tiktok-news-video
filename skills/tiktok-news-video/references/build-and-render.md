@@ -60,6 +60,7 @@ Call `buildSpecToFile` from `scripts/build-spec.mjs` with:
 | `scenes[].isHook` / `hookHeadline` | on the hook scene only |
 | `brandKit` | the resolved brand object (see `hook-and-brand.md`) |
 | `narrationAudioPath` / `bgmAudioPath` | relative to `workspaceDir` |
+| `captionStyle` | `"cumulative"` or `"popup"` — the Step 3b answer (`narration-and-bgm.md`). Omit to default to `"cumulative"`. |
 
 A screen holding several assets is passed as
 `assets: [{filename, share}]` instead of `assetFilename` — see
