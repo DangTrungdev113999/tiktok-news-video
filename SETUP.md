@@ -19,6 +19,34 @@ xong.
 
 ---
 
+## Bước 0 — Cài Git (bắt buộc, làm 1 lần cho mỗi máy)
+
+Bạn **không phải** clone repo bằng tay, nhưng app cần chương trình **Git** có
+sẵn trên máy để tự tải plugin từ GitHub về. Nếu chưa có Git, khi thêm
+marketplace sẽ báo lỗi kiểu:
+
+```
+failed to run git clone https://github.com/... : program not found
+```
+
+Kiểm tra nhanh: mở **Command Prompt / PowerShell** (Windows) hoặc **Terminal**
+(Mac), gõ `git --version`. Ra số phiên bản là đã có, **bỏ qua bước này**. Báo
+lỗi "not found / not recognized" thì cài theo dưới đây.
+
+**Windows** — mở PowerShell, dán 1 trong 2:
+```
+winget install --id Git.Git -e --source winget
+```
+Hoặc tải bản cài chạy (bấm Next, để mặc định): https://git-scm.com/download/win
+
+**Mac** — thường có sẵn. Nếu gõ `git --version` mà hiện cửa sổ đòi cài
+"Command Line Tools" thì bấm **Install**; hoặc cài qua Homebrew: `brew install git`.
+
+⚠️ **Sau khi cài Git, thoát HẲN app (Quit) rồi mở lại** để app nhận Git mới —
+đóng mỗi cửa sổ là chưa đủ. Nếu mở lại vẫn báo lỗi, khởi động lại máy 1 lần.
+
+---
+
 ## Claude Code CLI (terminal)
 
 Gõ lần lượt 2 lệnh sau:
