@@ -22,6 +22,14 @@ Apply the classification table in `knowledge/effect-catalog.md` exactly:
 Plus a `contain-blur-pad` fit override when cropping would lose too much (see
 the catalog's thresholds: images > 0.75 crop fraction, videos > 0.15).
 
+**A blur-padded image is never full-bleed.** It rests inset to ~86% of the
+frame (`BLUR_PAD_CONTENT_FRACTION`, in both `Scene.tsx` and `build-spec.mjs`),
+so a blurred border rings it on all four sides even when the source is already
+near 9:16, and its zoom is capped (~1.09×) so the push can't close that border.
+`fill_full_screen` opts out (cover, edge-to-edge). The **hook scene's image is
+the exception** — `isHook` always covers, because it sits inside the HookCard's
+own frame (see `hook-and-brand.md`).
+
 Alternation is tracked **per class**, not globally — two portraits back to
 back get push then pull, and a landscape between them doesn't disturb that
 sequence. `build-spec.mjs`'s `occurrence` counters already do this; don't

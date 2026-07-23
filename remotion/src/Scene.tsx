@@ -115,6 +115,22 @@ const DIAGONAL_ZOOM_END = 1.08;
 const BLUR_PAD_BACKDROP_SCALE = 1.3;
 const BLUR_PAD_BLUR_PX = 40;
 
+// A blur-padded image is NEVER full-bleed. It rests at this fraction of the
+// frame so a blurred border rings it on all four sides -- even a near-9:16
+// source, which plain `contain` would blow up to fill the frame and leave the
+// band ~4px wide (invisible). `fill_full_screen` opts out of blur-pad entirely
+// (the cover path), so this only governs the default, bordered look.
+// MIRRORED in scripts/build-spec.mjs (the flip_book degenerate-slide path's
+// foregroundScale) -- the two must stay in sync or an untagged shot and a
+// flip_book shot get different border widths.
+const BLUR_PAD_CONTENT_FRACTION = 0.86;
+// The Ken-Burns zoom on a blur-padded image is capped to this (vs ZOOM_END's
+// 1.2) so the push can never close the border it exists to show:
+// 0.86 * 1.09 = 0.94, still comfortably inside the frame. A stronger zoom is
+// the business of fill_full_screen, which has no border to protect. Also
+// mirrored in build-spec.mjs for the flip_book path.
+const BLUR_PAD_ZOOM_END = 1.09;
+
 // Cinematic ease-out curve (fast start, settles gently) instead of a
 // mechanical linear ramp -- applied to every effect's interpolate() call.
 const MOTION_EASING = Easing.bezier(0.22, 1, 0.36, 1);
@@ -754,16 +770,25 @@ const ContainBlurPad: React.FC<{
   // Painted size under object-fit: contain -- <= the frame on both axes, so
   // the letterbox bands this layout exists to produce are part of the
   // geometry the focus math has to respect.
+  // Contain-fit into a box inset to BLUR_PAD_CONTENT_FRACTION of the frame, so
+  // a blurred border always rings the picture. The painted size the focus/zoom
+  // math sees is inset to match the box, or the aim would overshoot by the
+  // border it no longer knows about.
   const containScale =
-    assetWidth && assetHeight ? Math.min(width / assetWidth, height / assetHeight) : 0;
-  const paintedW = containScale ? assetWidth! * containScale : width;
-  const paintedH = containScale ? assetHeight! * containScale : height;
+    assetWidth && assetHeight
+      ? Math.min(width / assetWidth, height / assetHeight) * BLUR_PAD_CONTENT_FRACTION
+      : 0;
+  const paintedW = containScale ? assetWidth! * containScale : width * BLUR_PAD_CONTENT_FRACTION;
+  const paintedH = containScale ? assetHeight! * containScale : height * BLUR_PAD_CONTENT_FRACTION;
+
+  // Cap the Ken-Burns zoom so the push can never close the border (above).
+  const bpZoomTo = Math.min(zoomTo ?? ZOOM_END, BLUR_PAD_ZOOM_END);
 
   const transform = focus && focus.length > 0
     ? computeFocusTransform(focus, frame, durationInFrames, paintedW, paintedH, width, height, focusReverse)
     : effect === "passthrough"
       ? "none"
-      : computeTransform(effect, direction, zoomVariant, frame, durationInFrames, width, height, false, zoomTo);
+      : computeTransform(effect, direction, zoomVariant, frame, durationInFrames, width, height, false, bpZoomTo);
   const src = staticFile(assetPath);
   const isVideo = assetType === "video";
 
@@ -772,7 +797,7 @@ const ContainBlurPad: React.FC<{
   // an aimed focus push deliberately leaves it alone too).
   const backdropZoom =
     effect === "zoom" && !(focus && focus.length > 0)
-      ? computeZoomScale(zoomVariant, frame, durationInFrames, zoomTo)
+      ? computeZoomScale(zoomVariant, frame, durationInFrames, bpZoomTo)
       : 1;
 
   const backdropStyle: CSSProperties = {
@@ -783,8 +808,8 @@ const ContainBlurPad: React.FC<{
   };
 
   const foregroundStyle: CSSProperties = {
-    width: "100%",
-    height: "100%",
+    width: `${BLUR_PAD_CONTENT_FRACTION * 100}%`,
+    height: `${BLUR_PAD_CONTENT_FRACTION * 100}%`,
     transform,
     transformOrigin: "center center",
   };

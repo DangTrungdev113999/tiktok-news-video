@@ -76,8 +76,23 @@ Switch to **contain + blur-pad** only when:
 
 **Blur-pad implementation:** duplicate the same asset, `object-fit: cover` +
 scale it up further (~130%) + Gaussian blur (~40px) to fill the whole
-1080×1920 frame as a backdrop; composite the sharp original centered on top at
-its natural `contain` size. Same technique for images and videos.
+1080×1920 frame as a backdrop; composite the sharp original centered on top.
+
+**The sharp copy is NEVER full-bleed — it rests inset to `BLUR_PAD_CONTENT_FRACTION`
+(0.86) of the frame**, so a blurred border rings it on ALL FOUR sides, not only
+the two the aspect ratio would letterbox. This exists because a near-9:16 source
+(e.g. 768×1376) `contain`-fits to essentially the whole frame: without the inset
+its "bands" are ~4px and it reads as full-bleed, which is exactly the look
+`fill_full_screen` is supposed to be the opt-in for. The border is the default;
+edge-to-edge is the tagged exception.
+
+To keep that border from being swallowed at the top of a Ken-Burns push, a
+blur-padded image's zoom is capped to `BLUR_PAD_ZOOM_END` (1.09, vs the cover
+path's 1.2): 0.86 × 1.09 = 0.94, still inside the frame. A stronger zoom belongs
+to `fill_full_screen`, which has no border to protect. Same technique — inset +
+capped zoom — for images and videos, and for the `flip_book` layered path
+(`build-spec.mjs` sizes its foreground with the SAME two constants; they are
+mirrored, keep them in sync).
 
 ## Push/pull alternation (implemented, default for portrait)
 

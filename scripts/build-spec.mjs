@@ -273,6 +273,13 @@ function chunkWordsIntoPopupCaptionLines(words) {
 function closeTimingGaps(scenes) {
   return scenes.map((scene, i) => ({
     ...scene,
+    // The FIRST scene always starts at frame 0. Narration carries a small
+    // lead-in (~0.05s of padding before the first spoken word), and without
+    // this the composition's black background is what renders for those opening
+    // frames -- the literal first thing the viewer sees is a black flash. The
+    // narration audio still plays on its own timeline; only the scene's visual
+    // is pulled back to cover from the very start.
+    startSec: i === 0 ? 0 : scene.startSec,
     endSec: i < scenes.length - 1 ? scenes[i + 1].startSec : scene.endSec,
   }));
 }
@@ -471,6 +478,14 @@ const PUNCH_SEC = 0.8;
 const PUNCH_SCALE = 1.08;
 /** Keeps an entrance-only shot from being frozen when no zoom was asked for. */
 const ENTRANCE_IDLE_ZOOM = 1.08;
+
+// A blur-padded image is never full-bleed -- it rests inset so a blurred border
+// rings it on all sides, and its zoom is capped so the push can't close that
+// border. MIRRORS remotion/src/Scene.tsx (ContainBlurPad); the flip_book
+// layered path is sized here, so both must use the same numbers or an untagged
+// shot and a flip_book shot get different borders.
+const BLUR_PAD_CONTENT_FRACTION = 0.86;
+const BLUR_PAD_ZOOM_END = 1.09;
 
 /**
  * Scale (against the file's own pixels) to paint a slide's sharp foreground at.
@@ -713,11 +728,17 @@ function resolveAssetMotion(asset, probe, warnings) {
       axis: 'x',
       from: 0.5,
       to: 0.5,
-      foregroundScale: asset.fillFullScreen ? coverScale : containScale,
+      // Blur-padded (not fill_full_screen): inset the flipped picture to the
+      // same fraction ContainBlurPad uses, so both wear the same blur border.
+      foregroundScale: asset.fillFullScreen ? coverScale : containScale * BLUR_PAD_CONTENT_FRACTION,
     };
     if (overrides.zoomTo === undefined) {
       overrides.zoomTo = ENTRANCE_IDLE_ZOOM;
       overrides.zoomVariant = 'in';
+    } else if (!asset.fillFullScreen) {
+      // A flip_book | zoom_in on a blur-padded image: cap the push so it can't
+      // close the border (matches ContainBlurPad's bpZoomTo).
+      overrides.zoomTo = Math.min(overrides.zoomTo, BLUR_PAD_ZOOM_END);
     }
   }
 
@@ -985,6 +1006,15 @@ export async function buildSpec({
       ),
     };
 
+    // A hook scene's image sits INSIDE the HookCard, which is already its own
+    // frame. The blur-pad border every content image now wears (see
+    // BLUR_PAD_CONTENT_FRACTION) would read as a picture floating in a frame
+    // within a frame, so a hook image always covers edge-to-edge instead. This
+    // is why extending the hook over the next screen(s) is done by marking them
+    // isHook (full-bleed, hook style) rather than heldHook (the split top-box,
+    // which renders through HeldHookScene and ignores `fit` entirely).
+    const resolvedFit = scene.isHook ? 'cover' : fit;
+
     const startFrame = Math.round(scene.startSec * FPS);
     const endFrame = Math.round(scene.endSec * FPS);
     const durationInFrames = Math.max(endFrame - startFrame, 1);
@@ -1010,7 +1040,7 @@ export async function buildSpec({
             },
           }
         : {}),
-      fit,
+      fit: resolvedFit,
       assetWidth: probe.width,
       assetHeight: probe.height,
       ...(scene.focus
