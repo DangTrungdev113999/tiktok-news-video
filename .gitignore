@@ -13,3 +13,14 @@ remotion/test-fixtures/
 *.log
 .DS_Store
 .superpowers/
+
+# OS / editor cruft (plugin targets Windows employees too)
+Thumbs.db
+desktop.ini
+.vscode/
+.idea/
+*.swp
+
+# Local env overrides + Remotion's default render dir
+.env.local
+remotion/out/

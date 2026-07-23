@@ -14,10 +14,21 @@ required, and an author who types only filenames must always get a working
 video.
 
 **The default look is blur-padded, not full-bleed.** Every image is shown whole
-at its natural size, with a blurred copy filling the rest of the frame — bands
-top and bottom for a landscape, left and right for a portrait, decided by the
-ratio. Edge-to-edge is opt-in via `fill_full_screen`, because cropping is the
-choice that throws content away and so is the one worth asking for.
+over a blurred copy of itself, and it is **inset on all four sides** — it rests
+at ~86% of the frame (`BLUR_PAD_CONTENT_FRACTION`), so a visible blurred border
+rings it top, bottom AND sides, not only the two edges the aspect ratio would
+letterbox. This is deliberate: a near-9:16 source (e.g. 768×1376) would
+otherwise `contain`-fit to essentially the whole frame and read as full-bleed
+with a ~4px band — indistinguishable from the thing `fill_full_screen` is for.
+The Ken-Burns zoom on a blur-padded image is also gentler (capped ~1.09×) so the
+push can never close that border. Edge-to-edge is opt-in via `fill_full_screen`,
+because cropping is the choice that throws content away and so is the one worth
+asking for.
+
+The **hook scene is the exception**: its image sits inside the HookCard (its own
+frame) and always **covers** edge-to-edge — a blur border there would be a frame
+inside a frame. That is automatic for any `isHook` scene; see
+`hook-and-brand.md`.
 
 ## Grammar
 
@@ -116,6 +127,22 @@ assets.
 
 When you meet a key in this table, **open its reference file before acting**.
 The table is the whole contract — a key not listed here is not implemented.
+
+### Screen-level tags
+
+Every key above sits on an **asset** line and fills a motion slot for that one
+image. A few tags instead mark the **whole screen**, so they are written on the
+`Screen N:` header line, not an asset line:
+
+| Key | Value | Reference |
+|---|---|---|
+| `continue_hook` | optional — bare = cover, `split` = top-box | `continue-hook.md` |
+
+`continue_hook` holds the hook over this screen: the screen renders in hook
+style (static hook card, no karaoke) instead of an ordinary captioned cut. Bare
+covers the image edge-to-edge; `continue_hook: split` boxes it in the top half.
+It only makes sense on screens contiguous with the hook. Open
+`continue-hook.md` before acting.
 
 ### Three kinds of key
 

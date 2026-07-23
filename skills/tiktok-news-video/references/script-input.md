@@ -11,6 +11,13 @@ Screen 2: [nội dung] — video: phong-van.mp4
 
 Parse into `screens[] = [{ index, text, assets[] }]`.
 
+A screen header may also carry a **screen-level tag** after its text — today
+just `continue_hook`, which holds the hook over that screen. It is written on
+the `Screen N:` line, not an asset line, and marks the whole screen rather than
+one image. **Strip the ` | continue_hook` off before taking the narration** —
+the narration is only the text before the tag, or the tag would be read aloud.
+See `tags/README.md` ("Screen-level tags") and `tags/continue-hook.md`.
+
 **The user's text is the narration, verbatim.** Do not rewrite, tighten,
 re-order, or "improve" it. Do not add a `[NOTE: ...]` gloss. What the user
 typed is what gets spoken — this is the author's voice and the pipeline's job

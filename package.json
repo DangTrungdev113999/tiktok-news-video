@@ -1,6 +1,6 @@
 {
   "name": "tiktok-news-video",
-  "version": "0.1.0",
+  "version": "0.3.0",
   "private": true,
   "type": "module",
   "description": "TikTok-format news video generator: images/videos + chat script -> rendered MP4 (Remotion, ElevenLabs TTS, blur-pad Ken Burns).",

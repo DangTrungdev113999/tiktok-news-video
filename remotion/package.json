@@ -1,6 +1,6 @@
 {
   "name": "tiktok-news-video-remotion",
-  "version": "0.1.0",
+  "version": "0.3.0",
   "private": true,
   "type": "module",
   "description": "Remotion project for tiktok-news-video: one parametric <Scene> component renders any spec.json into a 1080x1920 MP4.",

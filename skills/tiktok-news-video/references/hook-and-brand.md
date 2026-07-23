@@ -15,6 +15,13 @@ that scene is simply not passed to `buildSpec`. It gets the hook-card overlay
 instead: gradient card + brand badge + the headline, rendered by
 `remotion/src/HookCard.tsx`.
 
+**A hook scene's image always covers (full-bleed), automatically.** `buildSpec`
+forces `fit: cover` for any `isHook` scene, overriding the usual blur-pad
+default. The image sits inside the HookCard — the card is already its own frame,
+so the blur border content images wear (see `tags/README.md`) would read as a
+frame within a frame. You do NOT tag the hook image `fill_full_screen`; `isHook`
+covers it for you.
+
 The card has **no reveal/fade-in animation** — badge and headline are fully
 static and visible from frame 0. An earlier version had a fade-in reveal;
 removed per explicit feedback 2026-07-18 ("không cần hiệu ứng đâu, luôn luôn
@@ -26,19 +33,45 @@ video itself.
 
 For the card's typography and geometry, see `text-layout.md`.
 
-### Holding the hook over the next screen(s)
+### Extending the hook over the next screen(s)
 
 By default the hook card lasts exactly the hook line, then the run cuts to
-full-frame image scenes. A scene can instead be marked `heldHook: true` (with
-the same `hookHeadline`), which keeps the branded card **pinned in the bottom
-half** while that scene's image is fitted into the **top half**, and suppresses
-that scene's karaoke captions. Use it to keep the hook visible from the hook
-line through to the end of the screen that follows it, when the two read as one
-continuous opening thought.
+full-frame image scenes. To keep the hook going over the screen(s) right after
+it — so hook and screen read as **one continuous opening thought** — the author
+writes the **`continue_hook`** tag on those screen lines.
 
-- It is **off by default** — an ordinary scene fills the whole frame and shows
-  captions. Set it only on the screen(s) the hook should hold over, always the
-  ones immediately after the hook.
+**This is explicit, never inferred.** Do NOT decide the merge by reading the
+script for "one continuous thought"; two lines that sound continuous are still
+cut apart unless the author tagged the screen. Present `continue_hook` = merge;
+absent = ordinary captioned cut. (The skill used to make this call itself; that
+was replaced by the explicit tag on 2026-07-23 so the author controls it.) The
+tag's full contract is in `tags/continue-hook.md`.
+
+**What the tag does: extend the hook with the full hook style.** A tagged
+screen is marked `isHook: true` with the **same `hookHeadline`** as scene 0. It
+then renders exactly like the hook scene — the branded card + headline held
+below, the screen's image full-bleed (`cover`) behind it, no karaoke. The card
+is static and identical across the boundary, so hook + screen read as one shot;
+only the image behind it changes (one image per screen). This is the look the
+author asked for on 2026-07-22 ("2 chỗ đó gộp vào 1 … style của ảnh phải giống
+lúc đọc hook") — the image must NOT show a blur border here, and `isHook`'s
+automatic `cover` guarantees that. Pass one image per extended screen, so the
+merged hook+screen span shows just those images and nothing else.
+
+A tagged screen must be **contiguous with the hook** — immediately after it, or
+after another `continue_hook` screen. A tag that lands after ordinary screens
+have already cut away is meaningless; stop and ask at Step 1 rather than guess.
+
+**The split held look: `continue_hook: split`.** The same tag with the value
+`split` keeps the branded card **pinned in the bottom half** while that scene's
+image is fitted into the **top half** over a blurred pad (`heldHook: true`),
+instead of the continuous full-frame cover the bare tag gives. It also
+suppresses that scene's karaoke captions.
+
+- Like the bare tag it is **explicit only** — an untagged scene fills the whole
+  frame and shows captions, and `split` is never chosen by reading the script.
+  Same contiguity rule: only on screen(s) immediately after the hook (or after
+  another `continue_hook` screen).
 - The bottom keeps the **real hook card** (`HookCard`, the same brand cover +
   badge + headline as the hook scene) — not a flat gradient panel, which read
   as a bare orange slab. The image (`remotion/src/HeldHookScene.tsx`) is
